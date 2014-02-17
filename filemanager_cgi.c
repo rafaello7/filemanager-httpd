@@ -474,7 +474,8 @@ static void print_shares(struct directory_map *maps)
             hostname_esc, response_header);
     printf("<body>\n");
     print_error();
-    printf("<h3>%s&emsp;shares</a></h3>\n", hostname_esc);
+    printf("<h3><a href=\"?\">%s</a></a>&emsp;shares</a></h3>\n",
+            hostname_esc);
     printf("<table><tbody>\n");
     for(cur_ent = maps; cur_ent->name; ++cur_ent) {
         name_esc = escapeHtml(cur_ent->name, 0);
