@@ -553,7 +553,7 @@ static const char *getContentTypeByFileExt(const char *fname)
     for(i = 0; i < sizeof(mime_types) / sizeof(mime_types[0]) &&
             res == NULL; ++i)
     {
-        if( !strcmp(ext, mime_types[i].ext) )
+        if( !strcasecmp(ext, mime_types[i].ext) )
             res = mime_types[i].mime;
     }
     if( res == NULL )
