@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-//#define DEBUG
+/*#define DEBUG*/
 
 #ifdef DEBUG
 static void dolog(const char *fmt, ...)
@@ -485,7 +485,85 @@ static void print_shares(struct directory_map *maps)
     printf("</tbody></table></body></html>\n");
 }
 
-static void send_file(const char *rootdir, const char *fname, int size)
+static const char *getContentTypeByFileExt(const char *fname)
+{
+    static struct mime_type { const char *ext, *mime; } mime_types[] = {
+        { "aac",     "audio/x-hx-aac-adts" },
+        { "avi",     "video/x-msvideo" },
+        { "bmp",     "image/bmp" },
+        { "bz2",     "application/x-bzip2" },
+        { "c",       "text/x-c" },
+        { "css",     "text/css" },
+        { "deb",     "application/x-debian-package" },
+        { "doc",     "application/msword" },
+        { "flv",     "video/x-flv" },
+        { "gif",     "image/gif" },
+        { "gz",      "application/gzip" },
+        { "htm",     "text/html" },
+        { "html",    "text/html" },
+        { "java",    "text/plain" },
+        { "jar",     "application/jar" },
+        { "jpe",     "image/jpeg" },
+        { "jpeg",    "image/jpeg" },
+        { "jpg",     "image/jpeg" },
+        { "m3u",     "audio/x-mpegurl" },
+        { "mid",     "audio/midi" },
+        { "midi",    "audio/midi" },
+        { "mov",     "video/quicktime" },
+        { "mp2",     "audio/mpeg" },
+        { "mp3",     "audio/mpeg" },
+        { "mp4",     "video/mp4" },
+        { "mpe",     "video/mpeg" },
+        { "mpeg",    "video/mpeg" },
+        { "mpg",     "video/mpeg" },
+        { "ogg",     "application/x-ogg" },
+        { "pdf",     "application/pdf" },
+        { "png",     "image/png" },
+        { "ppt",     "application/vnd.ms-powerpoint" },
+        { "ps",      "application/postscript" },
+        { "qt",      "video/quicktime" },
+        { "ra",      "audio/x-realaudio" },
+        { "ram",     "audio/x-pn-realaudio" },
+        { "rtf",     "text/rtf" },
+        { "sh",      "text/plain" },
+        { "svg",     "image/svg+xml" },
+        { "svgz",    "image/svg+xml" },
+        { "tar",     "application/x-tar" },
+        { "tif",     "image/tiff" },
+        { "tiff",    "image/tiff" },
+        { "tsv",     "text/tab-separated-values" },
+        { "txt",     "text/plain" },
+        { "wav",     "audio/x-wav" },
+        { "wma",     "audio/x-ms-wma" },
+        { "wmv",     "video/x-ms-wmv" },
+        { "wmx",     "video/x-ms-wmx" },
+        { "xls",     "application/vnd.ms-excel" },
+        { "xml",     "text/xml" },
+        { "xsl",     "text/xml" },
+        { "zip",     "application/zip" }
+    };
+    const char *ext, *res = NULL;
+    int i;
+
+    if( (ext = strrchr(fname, '/')) == NULL )
+        ext = fname;
+    if( (ext = strrchr(ext, '.')) == NULL )
+        ext = ".txt";
+    ++ext;
+    for(i = 0; i < sizeof(mime_types) / sizeof(mime_types[0]) &&
+            res == NULL; ++i)
+    {
+        if( !strcmp(ext, mime_types[i].ext) )
+            res = mime_types[i].mime;
+    }
+    if( res == NULL )
+        res = "application/octet-stream";
+    dolog("getContentTypeByFileExt: ext=%s, mime=%s\n", ext, res);
+    return res;
+}
+
+static void send_file(const char *share_name, const char *rootdir,
+        const char *fname, int size)
 {
     FILE *fp;
     char buf[16384];
@@ -494,8 +572,9 @@ static void send_file(const char *rootdir, const char *fname, int size)
 
     realpath = format_path(rootdir, fname);
     if( (fp = fopen(realpath, "r")) != NULL ) {
-        printf("Content-type: video/mpeg\r\n");
-        printf("Content-Disposition: attachment; filename=\"%s\"\r\n",
+        dolog("send_file: opened %s", realpath);
+        printf("Content-type: %s\r\n", getContentTypeByFileExt(fname));
+        printf("Content-Disposition: inline; filename=\"%s\"\r\n",
                 strrchr(fname, '/')+1); // TODO: escape filename
         printf("Content-length: %d\r\n\r\n", size);
         while( (rd = fread(buf, 1, sizeof(buf), fp)) > 0 ) {
@@ -503,7 +582,8 @@ static void send_file(const char *rootdir, const char *fname, int size)
         }
         fclose(fp);
     }else{
-        printf("Content-length: 0\r\n\r\n");
+        printerr(errno, "unable to open %s", fname);
+        print_error_page(share_name);
     }
     free(realpath);
 }
@@ -529,7 +609,7 @@ static void print_response(const char *rootdir, const char *share_name,
     }else if( errbuf[0] ) {
         print_error_page(share_name);
     }else{
-        send_file(rootdir, query_file, st.st_size);
+        send_file(share_name, rootdir, query_file, st.st_size);
     }
 }
 
