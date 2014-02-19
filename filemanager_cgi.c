@@ -499,8 +499,8 @@ static const char *getContentTypeByFileExt(const char *fname)
         { "flv",     "video/x-flv" },
         { "gif",     "image/gif" },
         { "gz",      "application/gzip" },
-        { "htm",     "text/html" },
-        { "html",    "text/html" },
+        { "htm",     "text/html; charset=utf-8" },
+        { "html",    "text/html; charset=utf-8" },
         { "java",    "text/plain" },
         { "jar",     "application/jar" },
         { "jpe",     "image/jpeg" },
@@ -525,21 +525,22 @@ static const char *getContentTypeByFileExt(const char *fname)
         { "ra",      "audio/x-realaudio" },
         { "ram",     "audio/x-pn-realaudio" },
         { "rtf",     "text/rtf" },
-        { "sh",      "text/plain" },
+        { "sh",      "text/plain; charset=utf-8" },
         { "svg",     "image/svg+xml" },
         { "svgz",    "image/svg+xml" },
         { "tar",     "application/x-tar" },
         { "tif",     "image/tiff" },
         { "tiff",    "image/tiff" },
-        { "tsv",     "text/tab-separated-values" },
-        { "txt",     "text/plain" },
+        { "tsv",     "text/tab-separated-values; charset=utf-8" },
+        { "txt",     "text/plain; charset=utf-8" },
         { "wav",     "audio/x-wav" },
         { "wma",     "audio/x-ms-wma" },
         { "wmv",     "video/x-ms-wmv" },
         { "wmx",     "video/x-ms-wmx" },
         { "xls",     "application/vnd.ms-excel" },
-        { "xml",     "text/xml" },
-        { "xsl",     "text/xml" },
+        { "xml",     "text/xml; charset=utf-8" },
+        { "xpm",     "image/x-xpmi" },
+        { "xsl",     "text/xml; charset=utf-8" },
         { "zip",     "application/zip" }
     };
     const char *ext, *res = NULL;
@@ -547,7 +548,7 @@ static const char *getContentTypeByFileExt(const char *fname)
 
     if( (ext = strrchr(fname, '/')) == NULL )
         ext = fname;
-    if( (ext = strrchr(ext, '.')) == NULL )
+    if( (ext = strrchr(ext, '.')) == NULL || ext == fname || ext[-1] == '/' )
         ext = ".txt";
     ++ext;
     for(i = 0; i < sizeof(mime_types) / sizeof(mime_types[0]) &&
