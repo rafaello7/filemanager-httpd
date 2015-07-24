@@ -1,19 +1,9 @@
-filemanager_cgi
-===============
+filemanager-httpd
+=================
 
-A simple file manager CGI. Tested with
-[mini-httpd](http://www.acme.com/software/mini_httpd/).
+A tiny http server (serves only static contents) with built-in
+file management through http.
 
-Compilation
------------
-
-Run _make_.
-
-Installation
-------------
-
-Copy _filemanager.cgi_ binary to _cgi-bin_ directory of your httpd server,
-or whatever directory configured as containing CGI scripts.
 
 Configuration
 -------------
