@@ -1,8 +1,8 @@
 filemanager-httpd
 =================
 
-A tiny http server (serves only static contents) with built-in
-file management through http.
+A tiny http server (serves only static contents) with
+possibility to manage files using web browser.
 
 
 Configuration

@@ -6,6 +6,9 @@ typedef struct {
     const char *rootdir;
 } Share;
 
+
+/* Parses configuration file.
+ */
 void config_parse(void);
 
 const Share *config_getShares(void);

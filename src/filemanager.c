@@ -530,22 +530,6 @@ static RespBuf *print_response(const char *rootdir, const char *share_name,
     return resp;
 }
 
-/* searches for boundary in multipart browser request
-*/
-static const char *find_boundary(const char *from, unsigned len,
-        const char *boundary)
-{
-    int blen = strlen(boundary);
-
-    while( len >= blen + 2) {
-        if( ! memcmp(from, "--", 2) && ! memcmp(from+2, boundary, blen) )
-            return from;
-        ++from;
-        --len;
-    }
-    return NULL;
-}
-
 struct content_part {
     DataChunk name;
     DataChunk filename;
@@ -561,7 +545,7 @@ static int parse_part(const DataChunk *part, struct content_part *res)
     dchClear(&contentDisp);
     while( res->data.len >= 2 && ! dchStartsWithStr(&res->data, "\r\n") ) {
         if( dchStartsWithStr(&res->data, "Content-Disposition:") ) {
-            if( ! dchExtractTillStr(&res->data, "\r\n", &contentDisp) )
+            if( ! dchExtractTillStr(&res->data, &contentDisp, "\r\n") )
                 return 0;
         }else{
             if( ! dchShiftAfterStr(&res->data, "\r\n") )
@@ -579,12 +563,12 @@ static int parse_part(const DataChunk *part, struct content_part *res)
     dchClear(&res->filename);
     while( dchShiftAfterChr(&contentDisp, ';') ) {
         dchSkip(&contentDisp, " ");
-        if( ! dchExtractTillStr(&contentDisp, "=", &name) )
+        if( ! dchExtractTillStr(&contentDisp, &name, "=") )
             return 0;
         if( ! dchStartsWithStr(&contentDisp, "\"") )
             return 0;
         dchShift(&contentDisp, 1);
-        if( ! dchExtractTillStr(&contentDisp, "\"", &value) )
+        if( ! dchExtractTillStr(&contentDisp, &value, "\"") )
             return 0;
         if( dchEqualsStr(&name, "name") ) {
             res->name = value;
@@ -740,8 +724,7 @@ static MemBuf *delete_file(const char *rootdir, const char *dir,
 static MemBuf *process_post(const char *rootdir,
         const char *query_dir, const char *ct, const MemBuf *requestBody)
 {
-    DataChunk partData;
-    const char *bodyBeg, *beg, *end;
+    DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
     enum { RT_UNKNOWN, RT_UPLOAD, RT_RENAME, RT_NEWDIR, RT_DELETE }
         request_type = RT_UNKNOWN;
@@ -764,46 +747,47 @@ static MemBuf *process_post(const char *rootdir,
     }
     ct += 30;
     dolog("boundary: %s", ct);
-    bodyBeg = mb_data(requestBody);
-    beg = bodyBeg;
-    while((end = find_boundary(beg, mb_dataLen(requestBody)-(beg-bodyBeg), ct))
-            != NULL )
-    {
-        if( end != bodyBeg ) {
-            dchSet(&partData, beg, end-beg-2);
-            if( parse_part(&partData, &part) ) {
-                if( part.filename.data != NULL )
-                    dolog("part: {name=%.*s, filename=%.*s, datalen=%u}",
-                            part.name.len, part.name.data,
-                            part.filename.len, part.filename.data,
-                            part.data.len);
-                else
-                    dolog("part: {name=%.*s, datalen=%u}",
-                            part.name.len, part.name.data, part.data.len);
-                if( dchEqualsStr(&part.name, "do_upload") ) {
-                    request_type = RT_UPLOAD;
-                }else if( dchEqualsStr(&part.name, "do_rename") ) {
-                    request_type = RT_RENAME;
-                }else if( dchEqualsStr(&part.name, "do_newdir") ) {
-                    request_type = RT_NEWDIR;
-                }else if( dchEqualsStr(&part.name, "do_delete") ) {
-                    request_type = RT_DELETE;
-                }else if( dchEqualsStr(&part.name, "file") ) {
-                    file_part = part;
-                }else if( dchEqualsStr(&part.name, "new_dir") ) {
-                    newdir_part = part;
-                }else if( dchEqualsStr(&part.name, "new_name") ) {
-                    newname_part = part;
-                }
-            }else{
-                res = fmtError(0, "malformed form data", NULL);
-                goto err;
-            }
-        }
-        beg = end + strlen(ct) + 2;
-        if( ! memcmp(beg, "--\r\n", 4) )
+    dchInit(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
+    /* skip first boundary */
+    if( ! dchExtractTillStr2(&bodyData, &partData, "--", ct) ) {
+        res = fmtError(0, "malformed form data", NULL);
+        goto err;
+    }
+    /* check string after boundary; string after last boundary is "--\r\n" */
+    while( dchStartsWithStr(&bodyData, "\r\n") ) {
+        dchShift(&bodyData, 2);
+        if( ! dchExtractTillStr2(&bodyData, &partData, "\r\n--", ct) )
             break;
-        beg += 2;
+        if( parse_part(&partData, &part) ) {
+            if( part.filename.data != NULL )
+                dolog("part: {name=%.*s, filename=%.*s, datalen=%u}",
+                        part.name.len, part.name.data,
+                        part.filename.len, part.filename.data,
+                        part.data.len);
+            else
+                dolog("part: {name=%.*s, datalen=%u}",
+                        part.name.len, part.name.data, part.data.len);
+            if( dchEqualsStr(&part.name, "do_upload") ) {
+                request_type = RT_UPLOAD;
+            }else if( dchEqualsStr(&part.name, "do_rename") ) {
+                request_type = RT_RENAME;
+            }else if( dchEqualsStr(&part.name, "do_newdir") ) {
+                request_type = RT_NEWDIR;
+            }else if( dchEqualsStr(&part.name, "do_delete") ) {
+                request_type = RT_DELETE;
+            }else if( dchEqualsStr(&part.name, "file") ) {
+                file_part = part;
+            }else if( dchEqualsStr(&part.name, "new_dir") ) {
+                newdir_part = part;
+            }else if( dchEqualsStr(&part.name, "new_name") ) {
+                newname_part = part;
+            }
+        }else{
+            res = fmtError(0, "malformed form data", NULL);
+            goto err;
+        }
+        if(  dchStartsWithStr(&bodyData, "--\r\n") )
+            break;
     }
     switch( request_type ) {
     case RT_UPLOAD:

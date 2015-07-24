@@ -3,7 +3,11 @@
 
 #include "membuf.h"
 
+
+/* HTTP response buffer.
+ */
 typedef struct RespBuf RespBuf;
+
 
 /* Creates a new response.
  * Parameter sysErrno may be:
@@ -12,28 +16,37 @@ typedef struct RespBuf RespBuf;
  */
 RespBuf *resp_new(int sysErrno);
 
+
 /* Returns error message associated with sysErrno given in resp_new().
  * Returns NULL when sysErrno was 0.
  */
 const char *resp_getErrMessage(RespBuf*);
 
+
 /* Adds header to response
  */
 void resp_appendHeader(RespBuf*, const char *name, const char *value);
+
 
 /* Appends data to response body
  */
 void resp_appendData(RespBuf*, const char *data, unsigned dataLen);
 
-/* Appends string to response body
+
+/* Appends string to response body, i.e. strlen(str) bytes.
  */
 void resp_appendStr(RespBuf*, const char *str);
+
 
 /* Appends list of strings to response body.
  * The list shall be terminated with NULL.
  */
 void resp_appendStrL(RespBuf*, const char *str1, const char *str2,  ...);
 
+
+/* Ends use of the response. Returns the response raw bytes to send.
+ */
 MemBuf *resp_finish(RespBuf*, int onlyHead);
+
 
 #endif /* RESPBUF_H */
