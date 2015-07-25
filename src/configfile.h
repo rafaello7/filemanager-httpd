@@ -2,8 +2,8 @@
 #define CONFIGFILE_H
 
 typedef struct {
-    const char *name;
-    const char *rootdir;
+    const char *urlpath;
+    const char *syspath;
 } Share;
 
 
@@ -11,7 +11,7 @@ typedef struct {
  */
 void config_parse(void);
 
-const Share *config_getShares(void);
+const Share *config_getShareForPath(const char*);
 
 
 #endif /* CONFIGFILE_H */

@@ -61,6 +61,16 @@ void mb_setData(MemBuf *mb, unsigned offset, const char *data, unsigned len)
     memcpy(mb->data + offset, data, len);
 }
 
+void mb_setDataExtend(MemBuf *mb, unsigned offset, const char *data,
+        unsigned len)
+{
+    if( offset + len > mb->dataLen ) {
+        mb->dataLen = offset + len;
+        mb->data = realloc(mb->data, mb->dataLen);
+    }
+    memcpy(mb->data + offset, data, len);
+}
+
 unsigned mb_dataLen(const MemBuf *mb)
 {
     return mb->dataLen;

@@ -15,10 +15,10 @@ file syntax is as follows:
  * lines starting with '#' are treated as comment
  * remaining lines are assumed to be shares, in format:
 
-            share_name=/share/root
+            /share_name=/share/root
 
 Example file:
 
-        homes=/home
-        mounts=/mnt
+        /homes=/home
+        /mounts=/mnt
 

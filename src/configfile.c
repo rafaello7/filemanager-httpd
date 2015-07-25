@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+
 static Share *gShares;
 
 
@@ -23,25 +24,44 @@ void config_parse(void)
                 if( (val = strchr(buf, '=')) != NULL ) {
                     *val++ = '\0';
                     gShares = realloc(gShares, (count+1) * sizeof(Share));
-                    gShares[count].name = strdup(buf);
-                    gShares[count].rootdir = strdup(val);
+                    gShares[count].urlpath = strdup(buf);
+                    gShares[count].syspath = strdup(val);
                     ++count;
                 }
             }
         }else{
             gShares = malloc(sizeof(Share));
-            gShares->name = "root";
-            gShares->rootdir = "/";
+            gShares->urlpath = "/";
+            gShares->syspath = "/";
             count = 1;
         }
         gShares = realloc(gShares, (count+1) * sizeof(Share));
-        gShares[count].name = NULL;
-        gShares[count].rootdir = NULL;
+        gShares[count].urlpath = NULL;
+        gShares[count].syspath = NULL;
     }
 }
 
-const Share *config_getShares(void)
+const Share *config_getShareForPath(const char *path)
 {
-    return gShares;
+    const Share *cur, *best = NULL;
+    int pathLen, bestLen = -1;
+
+    pathLen = strlen(path);
+    if( pathLen > 0 && path[pathLen-1] == '/' )
+        --pathLen;
+    for(cur = gShares; cur->urlpath; ++cur) {
+        int urlLen = strlen(cur->urlpath);
+        while( urlLen > 0 && cur->urlpath[urlLen-1] == '/' )
+            --urlLen;
+        if( urlLen > pathLen || urlLen <= bestLen )
+            continue;
+        if( !strncmp(path, cur->urlpath, urlLen) &&
+            (urlLen == pathLen || path[urlLen] == '/') )
+        {
+            best = cur;
+            bestLen = urlLen;
+        }
+    }
+    return best;
 }
 

@@ -3,12 +3,13 @@
 #include <string.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <dirent.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include <unistd.h>
 #include "filemanager.h"
 #include "configfile.h"
 #include "datachunk.h"
+#include "folder.h"
 
 /*#define DEBUG*/
 #define DEBUG
@@ -119,73 +120,6 @@ static const char response_footer[] =
     "value=\"Add\"/></td></tr>\n"
     "</tbody></table></form>\n";
 
-struct disp_entry {
-    char *fname;
-    int is_dir;
-    unsigned size;
-};
-
-static int disp_ent_compare(const void *pvEnt1, const void *pvEnt2)
-{
-    const struct disp_entry *ent1 = pvEnt1;
-    const struct disp_entry *ent2 = pvEnt2;
-
-    if( ent1 ->is_dir != ent2->is_dir )
-        return ent2->is_dir - ent1->is_dir;
-    return strcoll(ent1->fname, ent2->fname);
-}
-
-static struct disp_entry *load_dir(const char *rootdir, const char *dname,
-        int *is_modifiable, int *errNum)
-{
-    DIR *d;
-    struct dirent *dp;
-    struct stat st;
-    char *dname_real, *fname_real;
-    struct disp_entry *res = NULL;
-    int count = 0, alloc = 0;
-
-    dname_real = format_path(rootdir, dname);
-    if( (d = opendir(dname_real)) != NULL ) {
-        while( (dp = readdir(d)) != NULL ) {
-            if( ! strcmp(dp->d_name, ".") || ! strcmp(dp->d_name, "..") )
-                continue;
-            fname_real = format_path(dname_real, dp->d_name);
-            if( stat(fname_real, &st) == 0 ) {
-                if( count == alloc ) {
-                    alloc = alloc ? 2 * alloc : 8;
-                    res = realloc(res, alloc * sizeof(struct disp_entry));
-                }
-                res[count].fname = strdup(dp->d_name);
-                res[count].is_dir = S_ISDIR(st.st_mode);
-                res[count].size = st.st_size;
-                ++count;
-            }
-            free(fname_real);
-        }
-        closedir(d);
-        qsort(res, count, sizeof(struct disp_entry), disp_ent_compare);
-        res = realloc(res, (count+1) * sizeof(struct disp_entry));
-        res[count].fname = NULL;
-        *is_modifiable = access(dname_real, W_OK) == 0;
-    }else{
-        *errNum = errno;
-        *is_modifiable = 0;
-    }
-    free(dname_real);
-    return res;
-}
-
-static void free_loaded_dir(struct disp_entry *entries)
-{
-    struct disp_entry *cur_ent;
-
-    for(cur_ent = entries; cur_ent->fname; ++cur_ent) {
-        free(cur_ent->fname);
-    }
-    free(entries);
-}
-
 static const char *escapeHtml(const char *s, int isInJavascriptStr)
 {
     enum { ESCMAX = 6 };
@@ -251,7 +185,7 @@ static void print_error(RespBuf *resp, const char *errDetail)
     }
 }
 
-static RespBuf *printErrorPage(int sysErrno, const char *share_name,
+static RespBuf *printErrorPage(int sysErrno, const char *path,
         int onlyHead)
 {
     char hostname[HOST_NAME_MAX];
@@ -261,7 +195,7 @@ static RespBuf *printErrorPage(int sysErrno, const char *share_name,
     gethostname(hostname, sizeof(hostname));
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
-        resp_appendStrL(resp, "<html><head><title>", escapeHtml(share_name, 0),
+        resp_appendStrL(resp, "<html><head><title>", escapeHtml(path, 0),
             " on ", escapeHtml(hostname, 0), "</title></head><body>\n", NULL);
         print_error(resp, resp_getErrMessage(resp));
         resp_appendStr(resp, "</body></html>\n");
@@ -269,59 +203,56 @@ static RespBuf *printErrorPage(int sysErrno, const char *share_name,
     return resp;
 }
 
-static RespBuf *print_dir_contents(struct disp_entry *entries,
-        int isModifiable, const char *share_name, const char *query_dir,
+static RespBuf *print_dir_contents(FolderEntry *entries,
+        int isModifiable, const char *queryDir,
         const char *opErrorMsg, int onlyHead)
 {
     char hostname[HOST_NAME_MAX];
     const char *s, *sn, *trailsl, *hostname_esc, *fname_esc;
-    struct disp_entry *cur_ent, *optent;
+    FolderEntry *cur_ent, *optent;
+    int len;
     RespBuf *resp;
 
-    trailsl = query_dir[strlen(query_dir)-1] == '/' ? "" : "/";
+    trailsl = queryDir[strlen(queryDir)-1] == '/' ? "" : "/";
     gethostname(hostname, sizeof(hostname));
-    share_name = escapeHtml(share_name, 0);
-    query_dir = escapeHtml(query_dir, 0);
+    queryDir = escapeHtml(queryDir, 0);
     hostname_esc = escapeHtml(hostname, 0);
     resp = resp_new(0);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( onlyHead )
         return resp;
-    resp_appendStrL(resp, "<html><head><title>",
-            share_name[0] ? share_name : query_dir, " on ", hostname_esc,
+    resp_appendStrL(resp, "<html><head><title>", queryDir, " on ", hostname_esc,
             "</title>", response_header, "</head>\n<body>\n", NULL);
     print_error(resp, opErrorMsg);
-    resp_appendStrL(resp, "<h3><a href=\"/\">", hostname_esc,
-            "</a>&emsp;<a href=\"/", share_name, "\">", share_name, "</a>",
+    resp_appendStrL(resp, "<h3><a href=\"/\">", hostname_esc, "</a>&emsp;",
             NULL);
-    if( strcmp(query_dir, "/") ) {
-        resp_appendStr(resp, "&emsp;");
-        for(s = query_dir+1; (sn = strchr(s, '/')) != NULL && sn[1]; s = sn+1) {
-            resp_appendStrL(resp, "/<a href=\"/", share_name, NULL);
-            resp_appendData(resp, query_dir, sn-query_dir);
+    if( strcmp(queryDir, "/") ) {
+        for(s = queryDir+1; (sn = strchr(s, '/')) != NULL && sn[1]; s = sn+1) {
+            resp_appendStr(resp, "/<a href=\"");
+            resp_appendData(resp, queryDir, sn-queryDir);
             resp_appendStr(resp, "\">");
             resp_appendData(resp, s, sn-s);
             resp_appendStr(resp, "</a>");
         }
-        resp_appendStrL(resp, "/<a href=\"/", share_name, query_dir,
-                "\">", s, "</a>", NULL);
+        resp_appendStrL(resp, "/<a href=\"", queryDir, "\">", s, "</a>", NULL);
     }
     resp_appendStr(resp, "</h3>\n<table><tbody>\n");
-    if( strcmp(query_dir, "/") ) {
-        resp_appendStrL(resp, "<tr>\n"
+    if( strcmp(queryDir, "/") ) {
+        resp_appendStr(resp, "<tr>\n"
              "<td><span class=\"plusgray\">+</span></td>\n"
-             "<td><a style=\"white-space: pre\" href=\"/", share_name, NULL);
-        resp_appendData(resp, query_dir, strrchr(query_dir, '/')-query_dir);
+             "<td><a style=\"white-space: pre\" href=\"");
+        len = strrchr(queryDir, '/')-queryDir;
+        resp_appendData(resp, queryDir, len == 0 ? 1 : len);
         resp_appendStr(resp, "\"> .. </a></td><td></td>\n</tr>\n");
     }
-    for(cur_ent = entries; cur_ent->fname; ++cur_ent) {
+    for(cur_ent = entries; cur_ent->fileName; ++cur_ent) {
         resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
-                "class=\"", cur_ent->is_dir ? "plusdir" : "plusfile",
+                "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
                 "\">+</span></td>", NULL);
-        fname_esc = escapeHtml(cur_ent->fname, 0);
-        resp_appendStrL(resp, "<td><a href=\"/", share_name, query_dir,
+        fname_esc = escapeHtml(cur_ent->fileName, 0);
+        resp_appendStrL(resp, "<td><a href=\"", queryDir,
                 trailsl, fname_esc, "\">", fname_esc, "</a></td>", NULL);
-        if( cur_ent->is_dir )
+        if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>");
         else{
             char buf[20];
@@ -338,17 +269,17 @@ static RespBuf *print_dir_contents(struct disp_entry *entries,
                     "<input type=\"hidden\" name=\"file\" value=\"",
                     fname_esc, "\"/>new name:<select name=\"new_dir\">\n",
                     NULL);
-            for(s = query_dir; s != NULL && s[1]; s = strchr(s+1, '/') ) {
+            for(s = queryDir; s != NULL && s[1]; s = strchr(s+1, '/') ) {
                 resp_appendStr(resp, "<option>");
-                resp_appendData(resp, query_dir, s - query_dir);
+                resp_appendData(resp, queryDir, s - queryDir);
                 resp_appendStr(resp, "/</option>\n");
             }
-            resp_appendStrL(resp, "<option selected>",  query_dir, trailsl,
+            resp_appendStrL(resp, "<option selected>",  queryDir, trailsl,
                     "</option>\n", NULL);
-            for(optent = entries; optent->fname; ++optent) {
-                if( optent != cur_ent && optent->is_dir ) {
-                    resp_appendStrL(resp, "<option>", query_dir, trailsl,
-                            escapeHtml(optent->fname, 0), "/</option>\n", NULL);
+            for(optent = entries; optent->fileName; ++optent) {
+                if( optent != cur_ent && optent->isDir ) {
+                    resp_appendStrL(resp, "<option>", queryDir, trailsl,
+                            escapeHtml(optent->fileName, 0), "/</option>\n", NULL);
                 }
             }
             resp_appendStrL(resp,
@@ -357,7 +288,7 @@ static RespBuf *print_dir_contents(struct disp_entry *entries,
                     "value=\"Rename\"/><br/>\n"
                     "<input type=\"submit\" name=\"do_delete\" "
                     "value=\"Delete\" onclick=\"return confirm("
-                    "'delete &quot;", escapeHtml(cur_ent->fname, 1),
+                    "'delete &quot;", escapeHtml(cur_ent->fileName, 1),
                     "&quot; ?')\"/>\n"
                     "</form></td>\n", NULL);
         }else{
@@ -368,36 +299,6 @@ static RespBuf *print_dir_contents(struct disp_entry *entries,
     }
     resp_appendStrL(resp, "</tbody></table>",
             isModifiable ? response_footer : "", "</body></html>\n", NULL);
-    return resp;
-}
-
-static RespBuf *printShares(int sysErrno, int onlyHead)
-{
-    char hostname[HOST_NAME_MAX];
-    const char *name_esc, *hostname_esc;
-    const Share *cur_ent;
-    RespBuf *resp;
-
-    gethostname(hostname, sizeof(hostname));
-    hostname_esc = escapeHtml(hostname, 0);
-    resp = resp_new(sysErrno);
-    resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
-    if( ! onlyHead ) {
-        resp_appendStrL(resp, "<html><head><title>", hostname_esc,
-                " shares</title>", response_header, "</head>\n<body>\n", NULL);
-        print_error(resp, resp_getErrMessage(resp));
-        resp_appendStrL(resp, "<h3><a href=\"/\">", hostname_esc,
-                "</a></a>&emsp;shares</a></h3>\n"
-                "<table><tbody>\n", NULL);
-        for(cur_ent = config_getShares(); cur_ent->name; ++cur_ent) {
-            name_esc = escapeHtml(cur_ent->name, 0);
-            resp_appendStrL(resp,
-                    "<tr><td><span class=\"plusgray\">+</span></td>"
-                    "<td><a href=\"", name_esc, "\">", name_esc,
-                    "</a></td></tr>", NULL);
-        }
-        resp_appendStr(resp, "</tbody></table></body></html>\n");
-    }
     return resp;
 }
 
@@ -479,24 +380,22 @@ static const char *getContentTypeByFileExt(const char *fname)
     return res;
 }
 
-static RespBuf *send_file(const char *share_name, const char *rootdir,
-        const char *fname, int onlyHead)
+static RespBuf *send_file(const char *sysFile, const char *queryFile,
+        int onlyHead)
 {
     FILE *fp;
     char buf[65536];
     int rd;
-    char *realpath;
     RespBuf *resp;
 
-    realpath = format_path(rootdir, fname);
-    if( (fp = fopen(realpath, "r")) != NULL ) {
-        dolog("send_file: opened %s", realpath);
+    if( (fp = fopen(sysFile, "r")) != NULL ) {
+        dolog("send_file: opened %s", sysFile);
         resp = resp_new(0);
         resp_appendHeader(resp, "Content-Type",
-                getContentTypeByFileExt(fname));
+                getContentTypeByFileExt(sysFile));
         if( ! onlyHead ) {
             // TODO: escape filename
-            sprintf(buf, "inline; filename=\"%s\"", strrchr(fname, '/')+1);
+            sprintf(buf, "inline; filename=\"%s\"", strrchr(queryFile, '/')+1);
             resp_appendHeader(resp, "Content-Disposition", buf);
             while( (rd = fread(buf, 1, sizeof(buf), fp)) > 0 ) {
                 resp_appendData(resp, buf, rd);
@@ -504,29 +403,31 @@ static RespBuf *send_file(const char *share_name, const char *rootdir,
         }
         fclose(fp);
     }else{
-        resp = printErrorPage(errno, share_name, onlyHead);
+        resp = printErrorPage(errno, queryFile, onlyHead);
     }
-    free(realpath);
     return resp;
 }
 
-static RespBuf *print_response(const char *rootdir, const char *share_name,
-        const char *query_file, const char *opErrorMsg, int onlyHead)
+static RespBuf *print_response(const char *syspath, const char *urlpath,
+        const char *queryFile, const char *opErrorMsg, int onlyHead)
 {
-    struct disp_entry *entries = NULL;
+    FolderEntry *entries;
     int errNum, isModifiable;
     RespBuf *resp;
+    char *sysFile;
 
-    entries = load_dir(rootdir, query_file, &isModifiable, &errNum);
+    sysFile = format_path(syspath, queryFile + strlen(urlpath));
+    entries = folder_loadDir(sysFile, &isModifiable, &errNum);
     if( entries != NULL ) {
-        resp = print_dir_contents(entries, isModifiable, share_name,
-                query_file, opErrorMsg, onlyHead);
-        free_loaded_dir(entries);
+        resp = print_dir_contents(entries, isModifiable, queryFile,
+                opErrorMsg, onlyHead);
+        folder_free(entries);
     }else if( errNum == ENOTDIR && opErrorMsg == NULL ) {
-        resp = send_file(share_name, rootdir, query_file, onlyHead);
+        resp = send_file(sysFile, queryFile, onlyHead);
     }else{
-        resp = printErrorPage(errno, share_name, onlyHead);
+        resp = printErrorPage(errno, queryFile, onlyHead);
     }
+    free(sysFile);
     return resp;
 }
 
@@ -722,7 +623,7 @@ static MemBuf *delete_file(const char *rootdir, const char *dir,
 }
 
 static MemBuf *process_post(const char *rootdir,
-        const char *query_dir, const char *ct, const MemBuf *requestBody)
+        const char *queryDir, const char *ct, const MemBuf *requestBody)
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
@@ -791,18 +692,18 @@ static MemBuf *process_post(const char *rootdir,
     }
     switch( request_type ) {
     case RT_UPLOAD:
-        res = upload_file(rootdir, query_dir, &file_part.filename,
+        res = upload_file(rootdir, queryDir, &file_part.filename,
                 &file_part.data);
         break;
     case RT_RENAME:
-        res = rename_file(rootdir, query_dir, &file_part.data,
+        res = rename_file(rootdir, queryDir, &file_part.data,
                 &newdir_part.data, &newname_part.data);
         break;
     case RT_NEWDIR:
-        res = create_newdir(rootdir, query_dir, &newdir_part.data);
+        res = create_newdir(rootdir, queryDir, &newdir_part.data);
         break;
     case RT_DELETE:
-        res = delete_file(rootdir, query_dir, &file_part.data);
+        res = delete_file(rootdir, queryDir, &file_part.data);
         break;
     default:
         res = fmtError(0, "unrecognized request", NULL);
@@ -815,41 +716,26 @@ err:
 RespBuf *filemgr_processRequest(const RequestBuf *req)
 {
     unsigned queryFileLen, isHeadReq, isPostReq;
-    const char *queryFile, *slash, *method;
-    const Share *curmap = NULL;
-    char *shareName;
+    const char *queryFile;
+    const Share *share;
     RespBuf *resp;
 
-    method = req_getMethod(req);
-    isHeadReq = !strcmp(method, "HEAD");
-    isPostReq = !strcmp(method, "POST");
+    isHeadReq = !strcmp(req_getMethod(req), "HEAD");
+    isPostReq = !strcmp(req_getMethod(req), "POST");
     queryFile = req_getPath(req);
     queryFileLen = strlen(queryFile);
     if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
     {
-        resp = printErrorPage(EPERM, "", isHeadReq); /* Forbidden */
-    }else if( ! strcmp(queryFile, "/") ) {
-        resp = printShares(0, isHeadReq);
+        resp = printErrorPage(EPERM, queryFile, isHeadReq); /* Forbidden */
     }else{
-        ++queryFile;   /* skip initial slash */
-        if( (slash = strchr(queryFile, '/')) != NULL ) {
-            shareName = malloc(slash-queryFile+1);
-            memcpy(shareName, queryFile, slash-queryFile);
-            shareName[slash-queryFile] = '\0';
-            queryFile = slash;
-        }else{
-            shareName = strdup(queryFile);
-            queryFile = "/";
-        }
-        for(curmap = config_getShares(); curmap->name != NULL &&
-                strcmp(curmap->name, shareName); ++curmap)
-            ;
-        if( curmap->name != NULL ) {
+        share = config_getShareForPath(queryFile);
+        if( share != NULL ) {
             MemBuf *opErrBuf = NULL;
             const char *opErrorMsg = NULL;
+
             if( isPostReq ) {
-                opErrBuf = process_post(curmap->rootdir, queryFile,
+                opErrBuf = process_post(share->syspath, queryFile,
                         req_getHeaderVal(req, "Content-Type"),
                         req_getBody(req));
             }
@@ -857,13 +743,12 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
                 mb_appendData(opErrBuf, "", 1);
                 opErrorMsg = mb_data(opErrBuf);
             }
-            resp = print_response(curmap->rootdir, curmap->name,
+            resp = print_response(share->syspath, share->urlpath,
                     queryFile, opErrorMsg, isHeadReq);
             mb_free(opErrBuf);
         }else{
-            resp = printShares(ENOENT, isHeadReq);
+            resp = printErrorPage(ENOENT, queryFile, isHeadReq);/* Not Found */
         }
-        free(shareName);
     }
     return resp;
 }

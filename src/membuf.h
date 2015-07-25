@@ -41,8 +41,15 @@ const void *mb_data(const MemBuf*);
 
 
 /* Copies data chunk into buffer.
+ * It is an error when the parameters refer beyond buffer end.
  */
 void mb_setData(MemBuf*, unsigned offset, const char *data, unsigned len);
+
+
+/* Copies data chunk into buffer.
+ * The buffer size is extended when needed.
+ */
+void mb_setDataExtend(MemBuf*, unsigned offset, const char *data, unsigned len);
 
 
 /* Returns length of buffer
