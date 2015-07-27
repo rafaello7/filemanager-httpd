@@ -464,7 +464,7 @@ static int parse_part(const DataChunk *part, struct content_part *res)
     dchClear(&res->name);
     dchClear(&res->filename);
     while( dchShiftAfterChr(&contentDisp, ';') ) {
-        dchSkip(&contentDisp, " ");
+        dchSkipInitial(&contentDisp, " ");
         if( ! dchExtractTillStr(&contentDisp, &name, "=") )
             return 0;
         if( ! dchStartsWithStr(&contentDisp, "\"") )
@@ -748,7 +748,14 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
                     queryFile, opErrorMsg, isHeadReq);
             mb_free(opErrBuf);
         }else{
-            resp = printErrorPage(ENOENT, queryFile, isHeadReq);/* Not Found */
+            Folder *folder = config_getSubSharesForPathAsFolder(queryFile);
+            if( folder != NULL ) {
+                resp = printFolderContents(folder, 0, queryFile,
+                        NULL, isHeadReq);
+                folder_free(folder);
+            }else
+                resp = printErrorPage(ENOENT, queryFile,    /* Not Found */
+                        isHeadReq);
         }
     }
     return resp;

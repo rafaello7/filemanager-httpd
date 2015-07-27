@@ -1,6 +1,7 @@
 #ifndef FOLDER_H
 #define FOLDER_H
 
+#include "datachunk.h"
 
 typedef struct {
     const char *fileName;
@@ -16,9 +17,11 @@ typedef struct Folder Folder;
 Folder *folder_new(void);
 
 
-/* Adds entry at end of folder
+/* Adds new entry.
  */
 void folder_addEntry(Folder*, const char *name, int isDir, unsigned size);
+void folder_addEntryChunk(Folder*, const DataChunk *name, int isDir,
+        unsigned size);
 
 
 /* Sort entries in folder. Entries are sorted as follows: folders first,

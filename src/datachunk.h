@@ -20,6 +20,11 @@ void dchClear(DataChunk*);
 void dchInit(DataChunk*, const char *data, unsigned len);
 
 
+/* Initializes chunk reference with the string
+ */
+void dchInitWithStr(DataChunk*, const char *str);
+
+
 /* Moves chunk begin forward by size bytes. The chunk end location is
  * kept unchanged.
  * Returns non-zero on success, zero when size exceeds chunk length.
@@ -45,13 +50,14 @@ int dchShiftAfterStr(DataChunk*, const char*);
 
 /* Moves begin of data chunk forward, skipping characters specified in str
  */
-void dchSkip(DataChunk*, const char *str);
+void dchSkipInitial(DataChunk*, const char *str);
 
 
 /* Extracts sub-chunk of data, which starts at dch begin and continues to
  * (but not including the) first occurrence of the specified string.
  * The dch begin is shifted after end of the found string.
- * If the string does not appear in dch, the dch and subChunk are unchanged.
+ * If the string does not appear in dch, the subChunk is set to whole dch and
+ * dch is set to empty.
  * Returns non-zero when the string was found, 0 otherwise.
  */
 int dchExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str);

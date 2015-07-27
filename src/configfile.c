@@ -65,3 +65,30 @@ const Share *config_getShareForPath(const char *path)
     return best;
 }
 
+Folder *config_getSubSharesForPathAsFolder(const char *path)
+{
+    Folder *folder = NULL;
+    const Share *cur;
+    int pathLen;
+    DataChunk dchPath, ent;
+
+    pathLen = strlen(path);
+    if( pathLen > 0 && path[pathLen-1] == '/' )
+        --pathLen;
+    for(cur = gShares; cur->urlpath; ++cur) {
+        if( !strncmp(path, cur->urlpath, pathLen) &&
+                cur->urlpath[pathLen] == '/')
+        {
+            dchInitWithStr(&dchPath, cur->urlpath + pathLen + 1);
+            dchSkipInitial(&dchPath, "/");
+            if( dchPath.len > 0 ) {
+                dchExtractTillStr(&dchPath, &ent, "/");
+                if( folder == NULL )
+                    folder = folder_new();
+                folder_addEntryChunk(folder, &ent, 1, 0);
+            }
+        }
+    }
+    return folder;
+}
+

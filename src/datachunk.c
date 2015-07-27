@@ -33,6 +33,12 @@ void dchInit(DataChunk *dch, const char *data, unsigned len)
     dch->len = len;
 }
 
+void dchInitWithStr(DataChunk *dch, const char *str)
+{
+    dch->data = str;
+    dch->len = strlen(str);
+}
+
 int dchShift(DataChunk *dch, unsigned size)
 {
     if( dch->len < size )
@@ -64,7 +70,7 @@ int dchShiftAfterStr(DataChunk *dch, const char *str)
     return 1;
 }
 
-void dchSkip(DataChunk *dch, const char *str)
+void dchSkipInitial(DataChunk *dch, const char *str)
 {
     while( dch->len > 0 && *dch->data && strchr(str, *dch->data) ) {
         ++dch->data;
@@ -76,13 +82,16 @@ int dchExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
 {
     int idxBeg, idxEnd;
 
-    if( ! indexOfStr(dch, str, &idxBeg, &idxEnd ) )
-        return 0;
-    subChunk->data = dch->data;
-    subChunk->len = idxBeg;
-    dch->data += idxEnd;
-    dch->len -= idxEnd;
-    return 1;
+    if( indexOfStr(dch, str, &idxBeg, &idxEnd ) ) {
+        subChunk->data = dch->data;
+        subChunk->len = idxBeg;
+        dch->data += idxEnd;
+        dch->len -= idxEnd;
+        return 1;
+    }
+    *subChunk = *dch;
+    dchClear(dch);
+    return 0;
 }
 
 int dchExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
@@ -106,6 +115,8 @@ int dchExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
                 break;
         }
     }
+    *subChunk = *dch;
+    dchClear(dch);
     return 0;
 }
 

@@ -25,7 +25,8 @@ Folder *folder_new(void)
     return res;
 }
 
-void folder_addEntry(Folder *folder, const char *name, int isDir, unsigned size)
+void folder_addEntryChunk(Folder *folder, const DataChunk *name, int isDir,
+        unsigned size)
 {
     FolderEntry *fe;
 
@@ -35,11 +36,19 @@ void folder_addEntry(Folder *folder, const char *name, int isDir, unsigned size)
                 (folder->entryAlloc+1) * sizeof(FolderEntry));
     }
     fe = folder->entries + folder->entryCount;
-    fe->fileName = strdup(name);
+    fe->fileName = dchDupToStr(name);
     fe->isDir = isDir;
     fe->size = size;
     fe[1].fileName = NULL;
     ++folder->entryCount;
+}
+
+void folder_addEntry(Folder *folder, const char *name, int isDir, unsigned size)
+{
+    DataChunk dch;
+
+    dchInit(&dch, name, strlen(name));
+    folder_addEntryChunk(folder, &dch, isDir, size);
 }
 
 static int folderEntCompare(const void *pvEnt1, const void *pvEnt2)
