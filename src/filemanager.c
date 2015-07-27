@@ -203,13 +203,13 @@ static RespBuf *printErrorPage(int sysErrno, const char *path,
     return resp;
 }
 
-static RespBuf *print_dir_contents(FolderEntry *entries,
+static RespBuf *printFolderContents(const Folder *folder,
         int isModifiable, const char *queryDir,
         const char *opErrorMsg, int onlyHead)
 {
     char hostname[HOST_NAME_MAX];
     const char *s, *sn, *trailsl, *hostname_esc, *fname_esc;
-    FolderEntry *cur_ent, *optent;
+    const FolderEntry *cur_ent, *optent;
     int len;
     RespBuf *resp;
 
@@ -245,7 +245,7 @@ static RespBuf *print_dir_contents(FolderEntry *entries,
         resp_appendData(resp, queryDir, len == 0 ? 1 : len);
         resp_appendStr(resp, "\"> .. </a></td><td></td>\n</tr>\n");
     }
-    for(cur_ent = entries; cur_ent->fileName; ++cur_ent) {
+    for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
         resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
                 "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
                 "\">+</span></td>", NULL);
@@ -276,10 +276,11 @@ static RespBuf *print_dir_contents(FolderEntry *entries,
             }
             resp_appendStrL(resp, "<option selected>",  queryDir, trailsl,
                     "</option>\n", NULL);
-            for(optent = entries; optent->fileName; ++optent) {
+            for(optent = folder_getEntries(folder); optent->fileName; ++optent){
                 if( optent != cur_ent && optent->isDir ) {
                     resp_appendStrL(resp, "<option>", queryDir, trailsl,
-                            escapeHtml(optent->fileName, 0), "/</option>\n", NULL);
+                            escapeHtml(optent->fileName, 0), "/</option>\n",
+                            NULL);
                 }
             }
             resp_appendStrL(resp,
@@ -411,17 +412,17 @@ static RespBuf *send_file(const char *sysFile, const char *queryFile,
 static RespBuf *print_response(const char *syspath, const char *urlpath,
         const char *queryFile, const char *opErrorMsg, int onlyHead)
 {
-    FolderEntry *entries;
+    Folder *folder;
     int errNum, isModifiable;
     RespBuf *resp;
     char *sysFile;
 
     sysFile = format_path(syspath, queryFile + strlen(urlpath));
-    entries = folder_loadDir(sysFile, &isModifiable, &errNum);
-    if( entries != NULL ) {
-        resp = print_dir_contents(entries, isModifiable, queryFile,
+    folder = folder_loadDir(sysFile, &isModifiable, &errNum);
+    if( folder != NULL ) {
+        resp = printFolderContents(folder, isModifiable, queryFile,
                 opErrorMsg, onlyHead);
-        folder_free(entries);
+        folder_free(folder);
     }else if( errNum == ENOTDIR && opErrorMsg == NULL ) {
         resp = send_file(sysFile, queryFile, onlyHead);
     }else{

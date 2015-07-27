@@ -2,7 +2,7 @@
 #define DATACHUNK_H
 
 
-/* Chunk of data reference withing byte buffer
+/* A reference to data chunk within byte buffer
  */
 typedef struct {
     const char *data;   /* the data begin */
@@ -43,7 +43,7 @@ int dchShiftAfterChr(DataChunk*, char);
 int dchShiftAfterStr(DataChunk*, const char*);
 
 
-/* Shifts begin of data chunk forward, skipping characters specified in str
+/* Moves begin of data chunk forward, skipping characters specified in str
  */
 void dchSkip(DataChunk*, const char *str);
 
