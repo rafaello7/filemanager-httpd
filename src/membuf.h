@@ -37,7 +37,7 @@ void mb_resize(MemBuf*, unsigned newSize);
 /* Returns the buffer contents.
  * Contents length may be obtained using mb_datalen.
  */
-const void *mb_data(const MemBuf*);
+const char *mb_data(const MemBuf*);
 
 
 /* Copies data chunk into buffer.
@@ -60,5 +60,11 @@ unsigned mb_dataLen(const MemBuf*);
 /* Ends use of MemBuf.
  */
 void mb_free(MemBuf*);
+
+
+/* Ends use of MemBuf. Returns the allocated internal buffer.
+ */
+char *mb_unbox_free(MemBuf*);
+
 
 #endif /* MEMBUF_H */

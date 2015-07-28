@@ -46,7 +46,7 @@ void mb_resize(MemBuf *mb, unsigned newSize)
     mb->dataLen = newSize;
 }
 
-const void *mb_data(const MemBuf *mb)
+const char *mb_data(const MemBuf *mb)
 {
     return mb->data;
 }
@@ -82,5 +82,16 @@ void mb_free(MemBuf *mb)
         free(mb->data);
         free(mb);
     }
+}
+
+char *mb_unbox_free(MemBuf *mb)
+{
+    char *res = NULL;
+
+    if( mb != NULL ) {
+        res = mb->data;
+        free(mb);
+    }
+    return res;
 }
 

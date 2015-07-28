@@ -7,9 +7,9 @@
 #include <limits.h>
 #include <unistd.h>
 #include "filemanager.h"
-#include "configfile.h"
+#include "fmconfig.h"
 #include "datachunk.h"
-#include "folder.h"
+#include "servefile.h"
 
 /*#define DEBUG*/
 #define DEBUG
@@ -47,17 +47,6 @@ static char *format_path(const char *rootdir, const char *subdir)
     }
     memcpy(res + rootdir_len, subdir, subdir_len + 1);
     return res;
-}
-
-static char *format_path3(const char *rootdir, const char *subdir1,
-        const char *subdir2)
-{
-    char *path1, *path2;
-
-    path1 = format_path(rootdir, subdir1);
-    path2 = format_path(path1, subdir2);
-    free(path1);
-    return path2;
 }
 
 static const char response_header[] =
@@ -203,16 +192,16 @@ static RespBuf *printErrorPage(int sysErrno, const char *path,
     return resp;
 }
 
-static RespBuf *printFolderContents(const Folder *folder,
-        int isModifiable, const char *queryDir,
+static RespBuf *printFolderContents(const ServeFile *sf,
         const char *opErrorMsg, int onlyHead)
 {
     char hostname[HOST_NAME_MAX];
-    const char *s, *sn, *trailsl, *hostname_esc, *fname_esc;
+    const char *queryDir, *s, *sn, *trailsl, *hostname_esc, *fname_esc;
     const FolderEntry *cur_ent, *optent;
-    int len;
+    int len, isModifiable = sf_isModifiable(sf);
     RespBuf *resp;
 
+    queryDir = sf_getUrlPath(sf);
     trailsl = queryDir[strlen(queryDir)-1] == '/' ? "" : "/";
     gethostname(hostname, sizeof(hostname));
     queryDir = escapeHtml(queryDir, 0);
@@ -245,7 +234,7 @@ static RespBuf *printFolderContents(const Folder *folder,
         resp_appendData(resp, queryDir, len == 0 ? 1 : len);
         resp_appendStr(resp, "\"> .. </a></td><td></td>\n</tr>\n");
     }
-    for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
+    for(cur_ent = sf_getEntries(sf); cur_ent->fileName; ++cur_ent) {
         resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
                 "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
                 "\">+</span></td>", NULL);
@@ -276,7 +265,7 @@ static RespBuf *printFolderContents(const Folder *folder,
             }
             resp_appendStrL(resp, "<option selected>",  queryDir, trailsl,
                     "</option>\n", NULL);
-            for(optent = folder_getEntries(folder); optent->fileName; ++optent){
+            for(optent = sf_getEntries(sf); optent->fileName; ++optent){
                 if( optent != cur_ent && optent->isDir ) {
                     resp_appendStrL(resp, "<option>", queryDir, trailsl,
                             escapeHtml(optent->fileName, 0), "/</option>\n",
@@ -381,22 +370,23 @@ static const char *getContentTypeByFileExt(const char *fname)
     return res;
 }
 
-static RespBuf *send_file(const char *sysFile, const char *queryFile,
-        int onlyHead)
+static RespBuf *send_file(const ServeFile *sf, int onlyHead)
 {
     FILE *fp;
     char buf[65536];
     int rd;
     RespBuf *resp;
+    const char *indexFile = sf_getIndexFile(sf);
+    const char *urlPath = sf_getUrlPath(sf);
 
-    if( (fp = fopen(sysFile, "r")) != NULL ) {
-        dolog("send_file: opened %s", sysFile);
+    if( (fp = fopen(indexFile, "r")) != NULL ) {
+        dolog("send_file: opened %s", indexFile);
         resp = resp_new(0);
         resp_appendHeader(resp, "Content-Type",
-                getContentTypeByFileExt(sysFile));
+                getContentTypeByFileExt(indexFile));
         if( ! onlyHead ) {
             // TODO: escape filename
-            sprintf(buf, "inline; filename=\"%s\"", strrchr(queryFile, '/')+1);
+            sprintf(buf, "inline; filename=\"%s\"", strrchr(urlPath, '/')+1);
             resp_appendHeader(resp, "Content-Disposition", buf);
             while( (rd = fread(buf, 1, sizeof(buf), fp)) > 0 ) {
                 resp_appendData(resp, buf, rd);
@@ -404,31 +394,23 @@ static RespBuf *send_file(const char *sysFile, const char *queryFile,
         }
         fclose(fp);
     }else{
-        resp = printErrorPage(errno, queryFile, onlyHead);
+        resp = printErrorPage(errno, urlPath, onlyHead);
     }
     return resp;
 }
 
-static RespBuf *print_response(const char *syspath, const char *urlpath,
-        const char *queryFile, const char *opErrorMsg, int onlyHead)
+static RespBuf *print_response(const ServeFile *sf, const char *opErrorMsg,
+        int onlyHead)
 {
-    Folder *folder;
-    int errNum, isModifiable;
     RespBuf *resp;
-    char *sysFile;
 
-    sysFile = format_path(syspath, queryFile + strlen(urlpath));
-    folder = folder_loadDir(sysFile, &isModifiable, &errNum);
-    if( folder != NULL ) {
-        resp = printFolderContents(folder, isModifiable, queryFile,
-                opErrorMsg, onlyHead);
-        folder_free(folder);
-    }else if( errNum == ENOTDIR && opErrorMsg == NULL ) {
-        resp = send_file(sysFile, queryFile, onlyHead);
+    if( sf_getIndexFile(sf) == NULL ) {
+        resp = printFolderContents(sf, opErrorMsg, onlyHead);
+    }else if( opErrorMsg == NULL ) {
+        resp = send_file(sf, onlyHead);
     }else{
-        resp = printErrorPage(errno, queryFile, onlyHead);
+        resp = printErrorPage(errno, sf_getUrlPath(sf), onlyHead);
     }
-    free(sysFile);
     return resp;
 }
 
@@ -444,37 +426,37 @@ static int parse_part(const DataChunk *part, struct content_part *res)
 
     dolog("parse part: partlen=%u", part->len);
     res->data = *part;
-    dchClear(&contentDisp);
-    while( res->data.len >= 2 && ! dchStartsWithStr(&res->data, "\r\n") ) {
-        if( dchStartsWithStr(&res->data, "Content-Disposition:") ) {
-            if( ! dchExtractTillStr(&res->data, &contentDisp, "\r\n") )
+    dch_Clear(&contentDisp);
+    while( res->data.len >= 2 && ! dch_StartsWithStr(&res->data, "\r\n") ) {
+        if( dch_StartsWithStr(&res->data, "Content-Disposition:") ) {
+            if( ! dch_ExtractTillStr(&res->data, &contentDisp, "\r\n") )
                 return 0;
         }else{
-            if( ! dchShiftAfterStr(&res->data, "\r\n") )
+            if( ! dch_ShiftAfterStr(&res->data, "\r\n") )
                 return 0;
         }
     }
-    if( ! dchShift(&res->data, 2) )
+    if( ! dch_Shift(&res->data, 2) )
         return 0;
     if( contentDisp.data == NULL ) {
         dolog("no Content-Disposition in part");
         return 0;
     }
     /* Content-Disposition: form-data; name="file"; filename="Test.xml" */
-    dchClear(&res->name);
-    dchClear(&res->filename);
-    while( dchShiftAfterChr(&contentDisp, ';') ) {
-        dchSkipInitial(&contentDisp, " ");
-        if( ! dchExtractTillStr(&contentDisp, &name, "=") )
+    dch_Clear(&res->name);
+    dch_Clear(&res->filename);
+    while( dch_ShiftAfterChr(&contentDisp, ';') ) {
+        dch_SkipLeading(&contentDisp, " ");
+        if( ! dch_ExtractTillStr(&contentDisp, &name, "=") )
             return 0;
-        if( ! dchStartsWithStr(&contentDisp, "\"") )
+        if( ! dch_StartsWithStr(&contentDisp, "\"") )
             return 0;
-        dchShift(&contentDisp, 1);
-        if( ! dchExtractTillStr(&contentDisp, &value, "\"") )
+        dch_Shift(&contentDisp, 1);
+        if( ! dch_ExtractTillStr(&contentDisp, &value, "\"") )
             return 0;
-        if( dchEqualsStr(&name, "name") ) {
+        if( dch_EqualsStr(&name, "name") ) {
             res->name = value;
-        }else if( dchEqualsStr(&name, "filename") ) {
+        }else if( dch_EqualsStr(&name, "filename") ) {
             res->filename = value;
         }
     }
@@ -504,19 +486,19 @@ static MemBuf *fmtError(int sysErrno, const char *str1, const char *str2, ...)
 }
 
 
-static MemBuf *upload_file(const char *rootdir, const char *dir,
-        const DataChunk *dchfname, const DataChunk *data)
+static MemBuf *upload_file(const char *sysPath, const DataChunk *dchfname,
+        const DataChunk *data)
 {
     FILE *fp;
     char *fname, *fname_real;
     MemBuf *res = NULL;
 
-    fname = dchDupToStr(dchfname);
+    fname = dch_DupToStr(dchfname);
     dolog("upload_file: adding file=%s len=%u\n", fname, data->len);
-    if( dchEqualsStr(dchfname, "") ) {
+    if( dch_EqualsStr(dchfname, "") ) {
         res = fmtError(0, "unable to add file with empty name", NULL);
     }else{
-        fname_real = format_path3(rootdir, dir, fname);
+        fname_real = format_path(sysPath, fname);
         if( access(fname_real, F_OK) == 0 ) {
             res = fmtError(0, "file ", fname, " already exists", NULL);
         }else{
@@ -536,11 +518,10 @@ static MemBuf *upload_file(const char *rootdir, const char *dir,
     return res;
 }
 
-static MemBuf *rename_file(const char *rootdir, const char *old_dir,
-        const DataChunk *dch_old_name,
+static MemBuf *rename_file(const char *sysPath, const DataChunk *dch_old_name,
         const DataChunk *dch_new_dir, const DataChunk *dch_new_name)
 {
-    char *old_name, *new_dir, *new_name, *oldpath, *newpath;
+    char *old_name, *new_dir, *new_name, *oldpath, *newUrlPath, *newSysPath;
     MemBuf *res = NULL;
 
     if( dch_old_name->data == NULL || dch_new_dir->data == NULL ||
@@ -548,17 +529,19 @@ static MemBuf *rename_file(const char *rootdir, const char *old_dir,
     {
         res = fmtError(0, "not all parameters provided for rename", NULL);
     }else{
-        old_name = dchDupToStr(dch_old_name);
-        new_dir = dchDupToStr(dch_new_dir);
-        new_name = dchDupToStr(dch_new_name);
-        oldpath = format_path3(rootdir, old_dir, old_name);
-        newpath = format_path3(rootdir, new_dir, new_name);
-        dolog("rename_file: %s -> %s", oldpath, newpath);
-        if( rename(oldpath, newpath) != 0 ) {
+        old_name = dch_DupToStr(dch_old_name);
+        new_dir = dch_DupToStr(dch_new_dir);
+        new_name = dch_DupToStr(dch_new_name);
+        oldpath = format_path(sysPath, old_name);
+        newUrlPath = format_path(new_dir, new_name);
+        newSysPath = config_getSysPathForUrlPath(newUrlPath);
+        dolog("rename_file: %s -> %s", oldpath, newSysPath);
+        if( rename(oldpath, newSysPath) != 0 ) {
             res = fmtError(errno, "rename ", old_name, " failed", NULL);
         }
         free(oldpath);
-        free(newpath);
+        free(newSysPath);
+        free(newUrlPath);
         free(new_name);
         free(new_dir);
         free(old_name);
@@ -566,33 +549,31 @@ static MemBuf *rename_file(const char *rootdir, const char *old_dir,
     return res;
 }
 
-static MemBuf *create_newdir(const char *rootdir, const char *dir_in,
-        const DataChunk *dch_new_dir)
+static MemBuf *create_newdir(const char *sysPath, const DataChunk *dchNewDir)
 {
-    char *path, *new_dir;
+    char *path, *newDir;
     MemBuf *res = NULL;
 
-    if( dch_new_dir->len == 0 || dch_new_dir->data[0] == '\0' ) {
+    if( dchNewDir->len == 0 || dchNewDir->data[0] == '\0' ) {
         res = fmtError(0, "unable to create directory with empty name", NULL);
-    }else if( dchIndexOfStr(dch_new_dir, "/") >= 0 ) {
+    }else if( dch_IndexOfStr(dchNewDir, "/") >= 0 ) {
         res = fmtError(0, "directory name cannot contain slashes"
                 "&emsp;&ndash;&emsp;\"/\"", NULL);
     }else{
-        new_dir = dchDupToStr(dch_new_dir);
-        path = format_path3(rootdir, dir_in, new_dir);
+        newDir = dch_DupToStr(dchNewDir);
+        path = format_path(sysPath, newDir);
         dolog("create dir: %s", path);
         if( mkdir(path, S_IRWXU|S_IRWXG|S_IRWXO) != 0 ) {
-            res = fmtError(errno, "unable to create directory \"", new_dir,
+            res = fmtError(errno, "unable to create directory \"", newDir,
                     "\"", NULL);
         }
         free(path);
-        free(new_dir);
+        free(newDir);
     }
     return res;
 }
 
-static MemBuf *delete_file(const char *rootdir, const char *dir,
-        const DataChunk *dch_fname)
+static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
 {
     char *path, *fname;
     struct stat st;
@@ -602,8 +583,8 @@ static MemBuf *delete_file(const char *rootdir, const char *dir,
     if( dch_fname->len == 0 || dch_fname->data[0] == '\0' ) {
         res = fmtError(0, "unable to remove file with empty name", NULL);
     }else{
-        fname = dchDupToStr(dch_fname);
-        path = format_path3(rootdir, dir, fname);
+        fname = dch_DupToStr(dch_fname);
+        path = format_path(sysPath, fname);
         dolog("delete: %s", path);
         if( stat(path, &st) == 0 ) {
             if( S_ISDIR(st.st_mode) ) {
@@ -623,8 +604,8 @@ static MemBuf *delete_file(const char *rootdir, const char *dir,
     return res;
 }
 
-static MemBuf *process_post(const char *rootdir,
-        const char *queryDir, const char *ct, const MemBuf *requestBody)
+static MemBuf *process_post(const char *sysPath, const char *ct,
+        const MemBuf *requestBody)
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
@@ -632,9 +613,9 @@ static MemBuf *process_post(const char *rootdir,
         request_type = RT_UNKNOWN;
     MemBuf *res = NULL;
 
-    dchClear(&file_part.name);
-    dchClear(&newdir_part.name);
-    dchClear(&newname_part.name);
+    dch_Clear(&file_part.name);
+    dch_Clear(&newdir_part.name);
+    dch_Clear(&newname_part.name);
     if( mb_dataLen(requestBody) == 0 ) {
         res = fmtError(0, "bad content length: 0", NULL);
         goto err;
@@ -649,16 +630,16 @@ static MemBuf *process_post(const char *rootdir,
     }
     ct += 30;
     dolog("boundary: %s", ct);
-    dchInit(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
+    dch_Init(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
     /* skip first boundary */
-    if( ! dchExtractTillStr2(&bodyData, &partData, "--", ct) ) {
+    if( ! dch_ExtractTillStr2(&bodyData, &partData, "--", ct) ) {
         res = fmtError(0, "malformed form data", NULL);
         goto err;
     }
     /* check string after boundary; string after last boundary is "--\r\n" */
-    while( dchStartsWithStr(&bodyData, "\r\n") ) {
-        dchShift(&bodyData, 2);
-        if( ! dchExtractTillStr2(&bodyData, &partData, "\r\n--", ct) )
+    while( dch_StartsWithStr(&bodyData, "\r\n") ) {
+        dch_Shift(&bodyData, 2);
+        if( ! dch_ExtractTillStr2(&bodyData, &partData, "\r\n--", ct) )
             break;
         if( parse_part(&partData, &part) ) {
             if( part.filename.data != NULL )
@@ -669,42 +650,42 @@ static MemBuf *process_post(const char *rootdir,
             else
                 dolog("part: {name=%.*s, datalen=%u}",
                         part.name.len, part.name.data, part.data.len);
-            if( dchEqualsStr(&part.name, "do_upload") ) {
+            if( dch_EqualsStr(&part.name, "do_upload") ) {
                 request_type = RT_UPLOAD;
-            }else if( dchEqualsStr(&part.name, "do_rename") ) {
+            }else if( dch_EqualsStr(&part.name, "do_rename") ) {
                 request_type = RT_RENAME;
-            }else if( dchEqualsStr(&part.name, "do_newdir") ) {
+            }else if( dch_EqualsStr(&part.name, "do_newdir") ) {
                 request_type = RT_NEWDIR;
-            }else if( dchEqualsStr(&part.name, "do_delete") ) {
+            }else if( dch_EqualsStr(&part.name, "do_delete") ) {
                 request_type = RT_DELETE;
-            }else if( dchEqualsStr(&part.name, "file") ) {
+            }else if( dch_EqualsStr(&part.name, "file") ) {
                 file_part = part;
-            }else if( dchEqualsStr(&part.name, "new_dir") ) {
+            }else if( dch_EqualsStr(&part.name, "new_dir") ) {
                 newdir_part = part;
-            }else if( dchEqualsStr(&part.name, "new_name") ) {
+            }else if( dch_EqualsStr(&part.name, "new_name") ) {
                 newname_part = part;
             }
         }else{
             res = fmtError(0, "malformed form data", NULL);
             goto err;
         }
-        if(  dchStartsWithStr(&bodyData, "--\r\n") )
+        if(  dch_StartsWithStr(&bodyData, "--\r\n") )
             break;
     }
     switch( request_type ) {
     case RT_UPLOAD:
-        res = upload_file(rootdir, queryDir, &file_part.filename,
+        res = upload_file(sysPath, &file_part.filename,
                 &file_part.data);
         break;
     case RT_RENAME:
-        res = rename_file(rootdir, queryDir, &file_part.data,
+        res = rename_file(sysPath, &file_part.data,
                 &newdir_part.data, &newname_part.data);
         break;
     case RT_NEWDIR:
-        res = create_newdir(rootdir, queryDir, &newdir_part.data);
+        res = create_newdir(sysPath, &newdir_part.data);
         break;
     case RT_DELETE:
-        res = delete_file(rootdir, queryDir, &file_part.data);
+        res = delete_file(sysPath, &file_part.data);
         break;
     default:
         res = fmtError(0, "unrecognized request", NULL);
@@ -718,7 +699,7 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
 {
     unsigned queryFileLen, isHeadReq, isPostReq;
     const char *queryFile;
-    const Share *share;
+    ServeFile *sf;
     RespBuf *resp;
 
     isHeadReq = !strcmp(req_getMethod(req), "HEAD");
@@ -730,33 +711,29 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
     {
         resp = printErrorPage(EPERM, queryFile, isHeadReq); /* Forbidden */
     }else{
-        share = config_getShareForPath(queryFile);
-        if( share != NULL ) {
-            MemBuf *opErrBuf = NULL;
-            const char *opErrorMsg = NULL;
+        char *opErrorMsg = NULL;
 
-            if( isPostReq ) {
-                opErrBuf = process_post(share->syspath, queryFile,
+        if( isPostReq ) {
+            char *sysPath = config_getSysPathForUrlPath(queryFile);
+            if( sysPath != NULL ) {
+                MemBuf *opErrBuf = process_post(sysPath,
                         req_getHeaderVal(req, "Content-Type"),
                         req_getBody(req));
+                if( opErrBuf != NULL ) {
+                    mb_appendData(opErrBuf, "", 1);
+                    opErrorMsg = mb_unbox_free(opErrBuf);
+                }
+                free(sysPath);
+            }else{
+                opErrorMsg = strdup("request not allowed here");
             }
-            if( opErrBuf != NULL ) {
-                mb_appendData(opErrBuf, "", 1);
-                opErrorMsg = mb_data(opErrBuf);
-            }
-            resp = print_response(share->syspath, share->urlpath,
-                    queryFile, opErrorMsg, isHeadReq);
-            mb_free(opErrBuf);
-        }else{
-            Folder *folder = config_getSubSharesForPathAsFolder(queryFile);
-            if( folder != NULL ) {
-                resp = printFolderContents(folder, 0, queryFile,
-                        NULL, isHeadReq);
-                folder_free(folder);
-            }else
-                resp = printErrorPage(ENOENT, queryFile,    /* Not Found */
-                        isHeadReq);
         }
+        if( (sf = config_getServeFile(queryFile)) != NULL ) {
+            resp = print_response(sf, opErrorMsg, isHeadReq);
+        }else{
+            resp = printErrorPage(ENOENT, queryFile, isHeadReq); /*Not Found*/
+        }
+        free(opErrorMsg);
     }
     return resp;
 }

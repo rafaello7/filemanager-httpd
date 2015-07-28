@@ -1,8 +1,8 @@
-OBJS = datachunk.o membuf.o requestbuf.o respbuf.o configfile.o \
-	   folder.o filemanager.o main.o
+OBJS = datachunk.o membuf.o servefile.o requestbuf.o respbuf.o \
+	   fmconfig.o filemanager.o cmdline.o main.o
 
-HEADERS = configfile.h datachunk.h filemanager.h membuf.h requestbuf.h \
-		  respbuf.h folder.h
+HEADERS = fmconfig.h datachunk.h filemanager.h membuf.h requestbuf.h \
+		  respbuf.h servefile.h cmdline.h
 
 filemanager-httpd: $(OBJS)
 	gcc $(OBJS) -o filemanager-httpd

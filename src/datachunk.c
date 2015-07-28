@@ -3,6 +3,9 @@
 #include <stdlib.h>
 
 
+static const char gWhiteSpaces[] = " \t\n";
+
+
 static int indexOfStr(const DataChunk *dch, const char *str,
         int *idxBeg, int *idxEnd)
 {
@@ -21,25 +24,25 @@ static int indexOfStr(const DataChunk *dch, const char *str,
     return 0;
 }
 
-void dchClear(DataChunk *dch)
+void dch_Clear(DataChunk *dch)
 {
     dch->data = NULL;
     dch->len = 0;
 }
 
-void dchInit(DataChunk *dch, const char *data, unsigned len)
+void dch_Init(DataChunk *dch, const char *data, unsigned len)
 {
     dch->data = data;
     dch->len = len;
 }
 
-void dchInitWithStr(DataChunk *dch, const char *str)
+void dch_InitWithStr(DataChunk *dch, const char *str)
 {
     dch->data = str;
     dch->len = strlen(str);
 }
 
-int dchShift(DataChunk *dch, unsigned size)
+int dch_Shift(DataChunk *dch, unsigned size)
 {
     if( dch->len < size )
         return 0;
@@ -48,7 +51,7 @@ int dchShift(DataChunk *dch, unsigned size)
     return 1;
 }
 
-int dchShiftAfterChr(DataChunk *dch, char c)
+int dch_ShiftAfterChr(DataChunk *dch, char c)
 {
     const char *dataEnd = memchr(dch->data, c, dch->len);
 
@@ -59,7 +62,7 @@ int dchShiftAfterChr(DataChunk *dch, char c)
     return 1;
 }
 
-int dchShiftAfterStr(DataChunk *dch, const char *str)
+int dch_ShiftAfterStr(DataChunk *dch, const char *str)
 {
     int idxEnd;
 
@@ -70,7 +73,7 @@ int dchShiftAfterStr(DataChunk *dch, const char *str)
     return 1;
 }
 
-void dchSkipInitial(DataChunk *dch, const char *str)
+void dch_SkipLeading(DataChunk *dch, const char *str)
 {
     while( dch->len > 0 && *dch->data && strchr(str, *dch->data) ) {
         ++dch->data;
@@ -78,7 +81,20 @@ void dchSkipInitial(DataChunk *dch, const char *str)
     }
 }
 
-int dchExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
+void dch_TrimTrailing(DataChunk *dch, const char *str)
+{
+    while( dch->len > 0 && dch->data[dch->len-1] &&
+            strchr(str, dch->data[dch->len-1]) )
+        --dch->len;
+}
+
+void dch_TrimWS(DataChunk *dch)
+{
+    dch_SkipLeading(dch, gWhiteSpaces);
+    dch_TrimTrailing(dch, gWhiteSpaces);
+}
+
+int dch_ExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
 {
     int idxBeg, idxEnd;
 
@@ -90,11 +106,11 @@ int dchExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
         return 1;
     }
     *subChunk = *dch;
-    dchClear(dch);
+    dch_Clear(dch);
     return 0;
 }
 
-int dchExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
+int dch_ExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
         const char *str1, const char *str2)
 {
     int idxBeg, idxEnd, len1 = strlen(str1);
@@ -111,37 +127,68 @@ int dchExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
                 dch->len = dch2.len - idxEnd;
                 return 1;
             }
-            if( ! dchShift(&dch2, idxBeg+1) )
+            if( ! dch_Shift(&dch2, idxBeg+1) )
                 break;
         }
     }
     *subChunk = *dch;
-    dchClear(dch);
+    dch_Clear(dch);
     return 0;
 }
 
-int dchEqualsStr(const DataChunk *dch, const char *str)
+int dch_ExtractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
+        const char *str)
+{
+    int res = dch_ExtractTillStr(dch, subChunk, str);
+
+    if( res ) {
+        dch_SkipLeading(dch, gWhiteSpaces);
+        dch_TrimTrailing(subChunk, gWhiteSpaces);
+    }
+    return res;
+}
+
+int dch_ExtractTillWS(DataChunk *dch, DataChunk *subChunk)
+{
+    dch_SkipLeading(dch, gWhiteSpaces);
+    if( dch->len > 0 ) {
+        subChunk->data = dch->data;
+        while( dch->len > 0 &&
+            (*dch->data == '\0' || strchr(gWhiteSpaces, *dch->data) == NULL))
+        {
+            ++dch->data;
+            --dch->len;
+        }
+        subChunk->len = dch->data - subChunk->data;
+        dch_SkipLeading(dch, gWhiteSpaces);
+        return 1;
+    }
+    dch_Clear(subChunk);
+    return 0;
+}
+
+int dch_EqualsStr(const DataChunk *dch, const char *str)
 {
     int len = strlen(str);
 
     return dch->len == len && !memcmp(dch->data, str, len);
 }
 
-int dchStartsWithStr(const DataChunk *dch, const char *str)
+int dch_StartsWithStr(const DataChunk *dch, const char *str)
 {
     int len = strlen(str);
 
     return dch->len >= len && !memcmp(dch->data, str, len);
 }
 
-int dchIndexOfStr(const DataChunk *dch, const char *str)
+int dch_IndexOfStr(const DataChunk *dch, const char *str)
 {
     int idxBeg;
 
     return indexOfStr(dch, str, &idxBeg, NULL) ? idxBeg : -1;
 }
 
-char *dchDupToStr(const DataChunk *dch)
+char *dch_DupToStr(const DataChunk *dch)
 {
     char *res = NULL;
    
@@ -151,5 +198,23 @@ char *dchDupToStr(const DataChunk *dch)
         res[dch->len] = '\0';
     }
     return res;
+}
+
+int dch_ToUInt(const DataChunk *dch, int base, unsigned *result)
+{
+    char *cpy, *endptr;
+    int ret = 0;
+    unsigned res;
+   
+    if( dch->len > 0 ) {
+        cpy = dch_DupToStr(dch);
+        res = strtoul(cpy, &endptr, base);
+        if( endptr != cpy ) {
+            *result = res;
+            ret = 1;
+        }
+        free(cpy);
+    }
+    return ret;
 }
 

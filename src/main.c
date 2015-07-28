@@ -8,7 +8,8 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include "filemanager.h"
-#include "configfile.h"
+#include "fmconfig.h"
+#include "cmdline.h"
 
 static void fatal(const char *msg, ...)
 {
@@ -71,7 +72,7 @@ static void mainloop(void)
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &i, sizeof(i));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(8000);
+    addr.sin_port = htons(config_getListenPort());
     if( bind(listenfd, (struct sockaddr*)&addr, sizeof(addr)) < 0 )
         fatal("bind");
     if( listen(listenfd, 5) < 0 )
@@ -144,8 +145,10 @@ static void mainloop(void)
 
 int main(int argc, char *argv[])
 {
-    config_parse();
-    mainloop();
+    if( cmdline_parse(argc, argv) ) {
+        config_parse();
+        mainloop();
+    }
     return 0;
 }
 
