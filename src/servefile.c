@@ -9,7 +9,7 @@
 
 
 struct ServeFile {
-    char *urlPath, *sysPath, *indexFile;
+    char *urlPath, *sysPath;
     int isFolder;
     FolderEntry *entries;
     unsigned entryCount;
@@ -22,7 +22,6 @@ ServeFile *sf_new(const char *urlPath, const char *sysPath, int isFolder)
 
     res->urlPath = urlPath == NULL ? NULL : strdup(urlPath);
     res->sysPath = sysPath == NULL ? NULL : strdup(sysPath);
-    res->indexFile = NULL;
     res->isFolder = isFolder;
     res->entries = malloc(sizeof(FolderEntry));
     res->entries->fileName = NULL;
@@ -44,19 +43,6 @@ const char *sf_getUrlPath(const ServeFile *sf)
 const char *sf_getSysPath(const ServeFile *sf)
 {
     return sf->sysPath;
-}
-
-void sf_setIndexFile(ServeFile *sf, const char *fname)
-{
-    int len = strlen(fname) + 1;
-
-    sf->indexFile = realloc(sf->indexFile, len);
-    memcpy(sf->indexFile, fname, len);
-}
-
-const char *sf_getIndexFile(const ServeFile *sf)
-{
-    return sf->indexFile ? sf->indexFile : sf->isFolder ? NULL : sf->sysPath;
 }
 
 int sf_isModifiable(const ServeFile *sf)
@@ -120,7 +106,6 @@ void sf_free(ServeFile *sf)
     for(i = 0; i < sf->entryCount; ++i)
         free((char*)sf->entries[i].fileName);
     free(sf->entries);
-    free(sf->indexFile);
     free(sf->sysPath);
     free(sf->urlPath);
     free(sf);

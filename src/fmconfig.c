@@ -18,9 +18,19 @@ typedef struct {
 } Share;
 
 static unsigned gListenPort;
+
+/* patterns specified as "index" option in configuration file.
+ */
 static const char **gIndexPatterns;
 static unsigned gIndexPatternCount;
+
+
+/* non-zero when "index" option contains "."
+ */
 static unsigned gIsDirectoryListing = 1;
+
+/* List of shares, terminated with one with urlpath set to NULL
+ */
 static Share *gShares;
 
 
@@ -91,23 +101,14 @@ void config_parse(void)
         if( gListenPort == 0 ) {
             gListenPort = geteuid() == 0 ? 80 : 8000;
         }
-        if( gIndexPatternCount == 0 ) {
-            gIndexPatterns = realloc(gIndexPatterns,
-                    (gIndexPatternCount+1) * sizeof(const char*));
-            gIndexPatterns[gIndexPatternCount++] = ".";
-        }
+        if( gIndexPatternCount == 0 )
+            gIsDirectoryListing = 1;
     }
 }
 
 unsigned config_getListenPort(void)
 {
     return gListenPort;
-}
-
-int config_isMatchingIndex(const char *fname)
-{
-
-    return 0;
 }
 
 char *config_getSysPathForUrlPath(const char *urlPath)
@@ -175,19 +176,21 @@ ServeFile *getSubSharesForPath(const char *urlPath)
     return sf;
 }
 
-ServeFile *config_getServeFile(const char *urlPath)
+ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
 {
     DIR *d;
     struct dirent *dp;
     struct stat st;
     char *sysPath;
     unsigned dirNameLen, matchIdx, bestMatchIdx = gIndexPatternCount;
-    ServeFile *sf;
+    MemBuf *bestPath;
+    ServeFile *sf = NULL;
 
+    *sysErrNo = ENOENT;
     sysPath = config_getSysPathForUrlPath(urlPath);
     if( sysPath != NULL ) {
         if( (d = opendir(sysPath)) != NULL ) {
-            sf = sf_new(urlPath, sysPath, 1);
+            bestPath = mb_new();
             MemBuf *filePathName = mb_new();
             mb_appendStr(filePathName, sysPath);
             if( sysPath[mb_dataLen(filePathName)-1] != '/' )
@@ -206,10 +209,14 @@ ServeFile *config_getServeFile(const char *urlPath)
                 if( matchIdx < bestMatchIdx &&
                             stat(mb_data(filePathName), &st) == 0 &&
                             ! S_ISDIR(st.st_mode) )
-                    sf_setIndexFile(sf, mb_data(filePathName));
+                    mb_setDataExtend(bestPath, 0, mb_data(filePathName),
+                            mb_dataLen(filePathName));
             }
-            if( sf_getIndexFile(sf) == NULL ) {
+            if( mb_dataLen(bestPath) > 0 ) {
+                sf = sf_new(urlPath, mb_data(bestPath), 0);
+            }else if( gIsDirectoryListing ) {
                 rewinddir(d);
+                sf = sf_new(urlPath, sysPath, 1);
                 while( (dp = readdir(d)) != NULL ) {
                     if( !strcmp(dp->d_name, ".") || ! strcmp(dp->d_name, ".."))
                         continue;
@@ -220,17 +227,20 @@ ServeFile *config_getServeFile(const char *urlPath)
                                 st.st_size);
                     }
                 }
+                sf_sortEntries(sf);
             }
             closedir(d);
             mb_free(filePathName);
-        }else{
+            mb_free(bestPath);
+        }else if( errno == ENOTDIR ) {
             sf = sf_new(urlPath, sysPath, 0);
+        }else{
+            *sysErrNo = errno;
         }
         free(sysPath);
     }else{
         sf = getSubSharesForPath(urlPath);
     }
-    sf_sortEntries(sf);
     return sf;
 }
 

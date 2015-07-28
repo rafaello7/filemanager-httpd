@@ -376,14 +376,14 @@ static RespBuf *send_file(const ServeFile *sf, int onlyHead)
     char buf[65536];
     int rd;
     RespBuf *resp;
-    const char *indexFile = sf_getIndexFile(sf);
+    const char *sysPath = sf_getSysPath(sf);
     const char *urlPath = sf_getUrlPath(sf);
 
-    if( (fp = fopen(indexFile, "r")) != NULL ) {
-        dolog("send_file: opened %s", indexFile);
+    if( (fp = fopen(sysPath, "r")) != NULL ) {
+        dolog("send_file: opened %s", sysPath);
         resp = resp_new(0);
         resp_appendHeader(resp, "Content-Type",
-                getContentTypeByFileExt(indexFile));
+                getContentTypeByFileExt(sysPath));
         if( ! onlyHead ) {
             // TODO: escape filename
             sprintf(buf, "inline; filename=\"%s\"", strrchr(urlPath, '/')+1);
@@ -395,21 +395,6 @@ static RespBuf *send_file(const ServeFile *sf, int onlyHead)
         fclose(fp);
     }else{
         resp = printErrorPage(errno, urlPath, onlyHead);
-    }
-    return resp;
-}
-
-static RespBuf *print_response(const ServeFile *sf, const char *opErrorMsg,
-        int onlyHead)
-{
-    RespBuf *resp;
-
-    if( sf_getIndexFile(sf) == NULL ) {
-        resp = printFolderContents(sf, opErrorMsg, onlyHead);
-    }else if( opErrorMsg == NULL ) {
-        resp = send_file(sf, onlyHead);
-    }else{
-        resp = printErrorPage(errno, sf_getUrlPath(sf), onlyHead);
     }
     return resp;
 }
@@ -698,6 +683,7 @@ err:
 RespBuf *filemgr_processRequest(const RequestBuf *req)
 {
     unsigned queryFileLen, isHeadReq, isPostReq;
+    int sysErrNo;
     const char *queryFile;
     ServeFile *sf;
     RespBuf *resp;
@@ -728,10 +714,16 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
                 opErrorMsg = strdup("request not allowed here");
             }
         }
-        if( (sf = config_getServeFile(queryFile)) != NULL ) {
-            resp = print_response(sf, opErrorMsg, isHeadReq);
+        if( (sf = config_getServeFile(queryFile, &sysErrNo)) != NULL ) {
+            if( sf_isFolder(sf) ) {
+                resp = printFolderContents(sf, opErrorMsg, isHeadReq);
+            }else if( opErrorMsg == NULL ) {
+                resp = send_file(sf, isHeadReq);
+            }else{
+                resp = printErrorPage(errno, sf_getUrlPath(sf), isHeadReq);
+            }
         }else{
-            resp = printErrorPage(ENOENT, queryFile, isHeadReq); /*Not Found*/
+            resp = printErrorPage(sysErrNo, queryFile, isHeadReq);
         }
         free(opErrorMsg);
     }
