@@ -7,59 +7,46 @@
 #include <string.h>
 
 struct RespBuf {
-    int sysErrno;
+    const char*statusStr;
     MemBuf *header;
     MemBuf *body;
 };
 
-RespBuf *resp_new(int sysErrno)
+RespBuf *resp_new(HttpStatus status)
 {
     RespBuf *resp;
-    const char *status;
+    const char *statusStr;
 
-    switch(sysErrno) {
-    case -405:
-        status = "405 Method Not Allowed";
+    switch( status ) {
+    case HTTP_200_OK:
+        statusStr = "200 OK";
         break;
-    case 0:
-        status = "200 OK";
+    case HTTP_403_FORBIDDEN:
+        statusStr = "403 Forbidden";
         break;
-    case ENOENT:
-        status = "404 Not Found";
+    case HTTP_404_NOT_FOUND:
+        statusStr = "404 Not Found";
         break;
-    case EPERM:
-    case EACCES:
-        status = "403 Forbidden";
+    case HTTP_405_METHOD_NOT_ALLOWED:
+        statusStr = "405 Method Not Allowed";
         break;
     default:
-        status = "500 Internal server error";
+        statusStr = "500 Internal Server Error";
         break;
     }
     resp = malloc(sizeof(RespBuf));
-    resp->sysErrno = sysErrno;
+    resp->statusStr = statusStr;
     resp->header = mb_new();
     resp->body = mb_new();
     mb_appendStr(resp->header, "HTTP/1.1 ");
-    mb_appendStr(resp->header, status);
+    mb_appendStr(resp->header, statusStr);
     mb_appendStr(resp->header, "\r\n");
     return resp;
 }
 
-const char *resp_getErrMessage(RespBuf *resp)
+const char *resp_getErrorMessage(RespBuf *resp)
 {
-    switch( resp->sysErrno ) {
-    case -405:
-        return "Method Not Allowed";
-    case 0:
-        return NULL;
-    case ENOENT:
-        return "Not Found";
-    case EPERM:
-    case EACCES:
-        return "Forbidden";
-    default:
-        return strerror(resp->sysErrno);
-    }
+    return resp->statusStr;
 }
 
 void resp_appendHeader(RespBuf *resp, const char *name, const char *value)

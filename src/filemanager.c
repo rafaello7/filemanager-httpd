@@ -174,22 +174,47 @@ static void print_error(RespBuf *resp, const char *errDetail)
     }
 }
 
-static RespBuf *printErrorPage(int sysErrno, const char *path,
-        int onlyHead)
+static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
+        const char *path, int onlyHead)
 {
     char hostname[HOST_NAME_MAX];
     RespBuf *resp;
 
-    resp = resp_new(sysErrno);
+    resp = resp_new(status);
     gethostname(hostname, sizeof(hostname));
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
         resp_appendStrL(resp, "<html><head><title>", escapeHtml(path, 0),
             " on ", escapeHtml(hostname, 0), "</title></head><body>\n", NULL);
-        print_error(resp, resp_getErrMessage(resp));
+        print_error(resp, mesg == NULL ? resp_getErrorMessage(resp) : mesg);
         resp_appendStr(resp, "</body></html>\n");
     }
     return resp;
+}
+
+static RespBuf *printErrorPage(int sysErrno, const char *path,
+        int onlyHead)
+{
+    HttpStatus status;
+    const char *mesg = NULL;
+
+    switch(sysErrno) {
+    case 0:
+        status = HTTP_200_OK;
+        break;
+    case ENOENT:
+        status = HTTP_404_NOT_FOUND;
+        break;
+    case EPERM:
+    case EACCES:
+        status = HTTP_403_FORBIDDEN;
+        break;
+    default:
+        status = HTTP_500;
+        mesg = strerror(sysErrno);
+        break;
+    }
+    return printMesgPage(status, mesg, path, onlyHead);
 }
 
 static RespBuf *printFolderContents(const ServeFile *sf,
@@ -206,7 +231,7 @@ static RespBuf *printFolderContents(const ServeFile *sf,
     gethostname(hostname, sizeof(hostname));
     queryDir = escapeHtml(queryDir, 0);
     hostname_esc = escapeHtml(hostname, 0);
-    resp = resp_new(0);
+    resp = resp_new(HTTP_200_OK);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( onlyHead )
         return resp;
@@ -381,7 +406,7 @@ static RespBuf *send_file(const ServeFile *sf, int onlyHead)
 
     if( (fp = fopen(sysPath, "r")) != NULL ) {
         dolog("send_file: opened %s", sysPath);
-        resp = resp_new(0);
+        resp = resp_new(HTTP_200_OK);
         resp_appendHeader(resp, "Content-Type",
                 getContentTypeByFileExt(sysPath));
         if( ! onlyHead ) {
@@ -522,7 +547,7 @@ static MemBuf *rename_file(const char *sysPath, const DataChunk *dch_old_name,
         newSysPath = config_getSysPathForUrlPath(newUrlPath);
         dolog("rename_file: %s -> %s", oldpath, newSysPath);
         if( rename(oldpath, newSysPath) != 0 ) {
-            res = fmtError(errno, "rename ", old_name, " failed", NULL);
+            res = fmtError(errno, old_name, " rename failed", NULL);
         }
         free(oldpath);
         free(newSysPath);
@@ -695,7 +720,7 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
     if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
     {
-        resp = printErrorPage(EPERM, queryFile, isHeadReq); /* Forbidden */
+        resp = printMesgPage(HTTP_403_FORBIDDEN, NULL, queryFile, isHeadReq);
     }else{
         char *opErrorMsg = NULL;
 
@@ -720,7 +745,8 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
             }else if( opErrorMsg == NULL ) {
                 resp = send_file(sf, isHeadReq);
             }else{
-                resp = printErrorPage(errno, sf_getUrlPath(sf), isHeadReq);
+                resp = printMesgPage(HTTP_200_OK, opErrorMsg,
+                        sf_getUrlPath(sf), isHeadReq);
             }
         }else{
             resp = printErrorPage(sysErrNo, queryFile, isHeadReq);

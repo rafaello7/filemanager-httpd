@@ -47,7 +47,7 @@ static void prepareResponse(struct ServerConnection *conn)
     int isHeadReq = ! strcmp(meth, "HEAD");
 
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
-        resp = resp_new(-405);
+        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
         resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
     }else{
         resp = filemgr_processRequest(conn->request);
