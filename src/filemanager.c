@@ -235,37 +235,52 @@ static RespBuf *printFolderContents(const ServeFile *sf,
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( onlyHead )
         return resp;
+    /* head, title */
     resp_appendStrL(resp, "<html><head><title>", queryDir, " on ", hostname_esc,
             "</title>", response_header, "</head>\n<body>\n", NULL);
+    /* error bar */
     print_error(resp, opErrorMsg);
+    /* host name as link to root */
     resp_appendStrL(resp, "<h3><a href=\"/\">", hostname_esc, "</a>&emsp;",
             NULL);
+    /* current path as link list */
     if( strcmp(queryDir, "/") ) {
-        for(s = queryDir+1; (sn = strchr(s, '/')) != NULL && sn[1]; s = sn+1) {
+        for(s = queryDir+1; (sn = strchr(s, '/')) != NULL; s = sn+1) {
             resp_appendStr(resp, "/<a href=\"");
             resp_appendData(resp, queryDir, sn-queryDir);
-            resp_appendStr(resp, "\">");
+            resp_appendStr(resp, "/\">");
             resp_appendData(resp, s, sn-s);
             resp_appendStr(resp, "</a>");
         }
-        resp_appendStrL(resp, "/<a href=\"", queryDir, "\">", s, "</a>", NULL);
+        if( *s )
+            resp_appendStrL(resp, "/<a href=\"", queryDir, "/\">", s, "</a>",
+                    NULL);
     }
     resp_appendStr(resp, "</h3>\n<table><tbody>\n");
-    if( strcmp(queryDir, "/") ) {
+    /* link to parent - " .. " */
+    len = strlen(queryDir);
+    while( len > 0 && queryDir[len-1] == '/' )
+        --len;
+    if( len > 0 ) {
         resp_appendStr(resp, "<tr>\n"
              "<td><span class=\"plusgray\">+</span></td>\n"
              "<td><a style=\"white-space: pre\" href=\"");
-        len = strrchr(queryDir, '/')-queryDir;
-        resp_appendData(resp, queryDir, len == 0 ? 1 : len);
+        while( len > 0 && queryDir[len-1] != '/' )
+            --len;
+        resp_appendData(resp, queryDir, len);
         resp_appendStr(resp, "\"> .. </a></td><td></td>\n</tr>\n");
     }
+    /* entry list */
     for(cur_ent = sf_getEntries(sf); cur_ent->fileName; ++cur_ent) {
+        /* red plus */
         resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
                 "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
                 "\">+</span></td>", NULL);
+        /* entry name as link */
         fname_esc = escapeHtml(cur_ent->fileName, 0);
         resp_appendStrL(resp, "<td><a href=\"", queryDir,
-                trailsl, fname_esc, "\">", fname_esc, "</a></td>", NULL);
+                trailsl, fname_esc, cur_ent->isDir ? "/" : "", "\">",
+                fname_esc, "</a></td>", NULL);
         if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>");
         else{
@@ -276,6 +291,7 @@ static RespBuf *printFolderContents(const ServeFile *sf,
         }
         resp_appendStr(resp, "</tr>");
 
+        /* menu displayed after click red plus */
         resp_appendStr(resp, "<tr style=\"display: none\"><td></td>\n");
         if( isModifiable ) {
             resp_appendStrL(resp, "<td colspan=\"2\"><form method=\"POST\" "
@@ -312,6 +328,7 @@ static RespBuf *printFolderContents(const ServeFile *sf,
         }
         resp_appendStr(resp, "</tr>\n");
     }
+    /* footer */
     resp_appendStrL(resp, "</tbody></table>",
             isModifiable ? response_footer : "", "</body></html>\n", NULL);
     return resp;

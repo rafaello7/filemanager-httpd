@@ -117,8 +117,6 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     int urlPathLen, sysPathLen, bestShLen = -1;
 
     urlPathLen = strlen(urlPath);
-    while( urlPathLen > 0 && urlPath[urlPathLen-1] == '/' )
-        --urlPathLen;
     for(cur = gShares; cur->urlpath; ++cur) {
         int shLen = strlen(cur->urlpath);
         while( shLen > 0 && cur->urlpath[shLen-1] == '/' )
@@ -199,18 +197,21 @@ ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
             while( bestMatchIdx > 0 && (dp = readdir(d)) != NULL ) {
                 if( ! strcmp(dp->d_name, ".") || ! strcmp(dp->d_name, "..") )
                     continue;
-                mb_setDataExtend(filePathName, dirNameLen, dp->d_name,
-                        strlen(dp->d_name) + 1);
                 for( matchIdx = 0; matchIdx < bestMatchIdx; ++matchIdx ) {
-                    if( fnmatch(gIndexPatterns[matchIdx], mb_data(filePathName),
+                    if( fnmatch(gIndexPatterns[matchIdx], dp->d_name,
                                 FNM_PATHNAME | FNM_PERIOD) == 0 )
                         break;
                 }
-                if( matchIdx < bestMatchIdx &&
-                            stat(mb_data(filePathName), &st) == 0 &&
+                if( matchIdx < bestMatchIdx ) {
+                    mb_setDataExtend(filePathName, dirNameLen, dp->d_name,
+                            strlen(dp->d_name) + 1);
+                    if( stat(mb_data(filePathName), &st) == 0 &&
                             ! S_ISDIR(st.st_mode) )
-                    mb_setDataExtend(bestPath, 0, mb_data(filePathName),
-                            mb_dataLen(filePathName));
+                    {
+                        mb_setDataExtend(bestPath, 0, mb_data(filePathName),
+                                mb_dataLen(filePathName));
+                    }
+                }
             }
             if( mb_dataLen(bestPath) > 0 ) {
                 sf = sf_new(urlPath, mb_data(bestPath), 0);
