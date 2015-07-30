@@ -6,5 +6,4 @@ filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestbuf.c \
 							fmconfig.h datachunk.h filemanager.h membuf.h \
 							requestbuf.h respbuf.h folder.h cmdline.h
 
-
-#$(OBJS): $(HEADERS)
+filemanager_httpd_CFLAGS = -Wall

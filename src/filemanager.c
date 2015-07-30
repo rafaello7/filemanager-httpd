@@ -12,7 +12,6 @@
 #include "folder.h"
 
 /*#define DEBUG*/
-#define DEBUG
 
 #ifdef DEBUG
 static void dolog(const char *fmt, ...)
@@ -772,7 +771,7 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
     }else{
         char *sysPath = config_getSysPathForUrlPath(queryFile);
         Folder *folder = NULL;
-        int isFolder;
+        int isFolder = 0;
 
         resp = NULL;
         sysErrNo = 0;
