@@ -77,6 +77,8 @@ static void mainloop(void)
         fatal("bind");
     if( listen(listenfd, 5) < 0 )
         fatal("listen");
+    if( ! config_switchToTargetUser() )
+        exit(1);
     FD_ZERO(&readFds);
     FD_ZERO(&writeFds);
 

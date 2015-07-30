@@ -10,6 +10,7 @@
 #include <fnmatch.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <pwd.h>
 
 
 typedef struct {
@@ -18,6 +19,7 @@ typedef struct {
 } Share;
 
 static unsigned gListenPort;
+static const char *gSwitchUser = "www-data";
 
 /* patterns specified as "index" option in configuration file.
  */
@@ -39,7 +41,7 @@ void config_parse(void)
     const char *configFName;
     FILE *fp;
     char buf[1024];
-    DataChunk dchLine, dchName, dchPatt;
+    DataChunk dchName, dchValue, dchPatt;
     int shareCount = 0, lineNo = 0;
 
     if( gShares == NULL ) {
@@ -48,19 +50,19 @@ void config_parse(void)
             gIsDirectoryListing = 0;
             while( fgets(buf, sizeof(buf), fp) != NULL ) {
                 ++lineNo;
-                dch_InitWithStr(&dchLine, buf);
-                dch_TrimWS(&dchLine);
-                if( dchLine.len == 0 || *dchLine.data == '#' )
+                dch_InitWithStr(&dchValue, buf);
+                dch_TrimWS(&dchValue);
+                if( dchValue.len == 0 || *dchValue.data == '#' )
                     continue;
-                if( dch_ExtractTillStrStripWS(&dchLine, &dchName, "=") ) {
+                if( dch_ExtractTillStrStripWS(&dchValue, &dchName, "=") ) {
                     if( dch_StartsWithStr(&dchName, "/") ) {
                         gShares = realloc(gShares,
                                 (shareCount+1) * sizeof(Share));
                         gShares[shareCount].urlpath = dch_DupToStr(&dchName);
-                        gShares[shareCount].syspath = dch_DupToStr(&dchLine);
+                        gShares[shareCount].syspath = dch_DupToStr(&dchValue);
                         ++shareCount;
                     }else if( dch_EqualsStr(&dchName, "index") ) {
-                        while( dch_ExtractTillWS(&dchLine, &dchPatt) ) {
+                        while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
                             if( dch_EqualsStr(&dchPatt, ".") )
                                 gIsDirectoryListing = 1;
                             else{
@@ -72,9 +74,11 @@ void config_parse(void)
                             }
                         }
                     }else if( dch_EqualsStr(&dchName, "port") ) {
-                        if( ! dch_ToUInt(&dchLine, 0, &gListenPort) )
+                        if( ! dch_ToUInt(&dchValue, 0, &gListenPort) )
                             fprintf(stderr, "%s:%d warning: unrecognized port",
                                     configFName, lineNo);
+                    }else if( dch_EqualsStr(&dchName, "user") ) {
+                        gSwitchUser = dch_DupToStr(&dchValue);
                     }else{
                         fprintf(stderr, "%s:%d warning: unrecognized option "
                                 "\"%.*s\", ignored\n", configFName, lineNo,
@@ -109,6 +113,28 @@ void config_parse(void)
 unsigned config_getListenPort(void)
 {
     return gListenPort;
+}
+
+int config_switchToTargetUser(void)
+{
+    int res = 1;
+    struct passwd *pwd;
+
+    if( gSwitchUser && geteuid() == 0 ) {
+        res = 0;
+        if( (pwd = getpwnam(gSwitchUser)) != NULL ) {
+            if( setgid(pwd->pw_gid) != 0 )
+                fprintf(stderr, "WARN: setgid: %s\n", strerror(errno));
+            if( setuid(pwd->pw_uid) == 0 )
+                res = 1;
+            else
+                fprintf(stderr, "setuid: %s\n", strerror(errno));
+        }else{
+            fprintf(stderr, "No such user \"%s\"; please specify a valid "
+                    "switch user in configuration file\n", gSwitchUser);
+        }
+    }
+    return res;
 }
 
 char *config_getSysPathForUrlPath(const char *urlPath)

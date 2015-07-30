@@ -11,6 +11,10 @@ void config_parse(void);
 unsigned config_getListenPort(void);
 
 
+/* Switches to user specified in configuration file.
+ */
+int config_switchToTargetUser(void);
+
 /* Returns path in file system corresponding to given path in URL.
  * Returns NULL when the URL path does not have any corresponding
  * system path.

@@ -63,7 +63,7 @@ static const char response_header[] =
     "    }\n"
     "</script>\n"
     "<style>\n"
-    "    body { background-color: #F7F5FC; }\n"
+    "    body { background-color: #F2FAFC; }\n"
     "    span.plusdir {\n"
     "        font-family: monospace;\n"
     "        font-weight: bold;\n"
@@ -308,7 +308,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 "\">+</span></td>", NULL);
         /* entry name as link */
         fname_esc = escapeHtml(cur_ent->fileName, 0);
-        resp_appendStrL(resp, "<td><a href=\"", urlPathEsc, "/", fname_esc,
+        resp_appendStrL(resp, "<td><a href=\"", urlPathEsc,
+                urlPathLen == 1 ? "" : "/", fname_esc,
                 cur_ent->isDir ? "/" : "", "\">", fname_esc, "</a></td>", NULL);
         if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>");
