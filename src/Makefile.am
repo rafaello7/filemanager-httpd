@@ -1,4 +1,4 @@
-bin_PROGRAMS = filemanager-httpd
+sbin_PROGRAMS = filemanager-httpd
 
 filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestbuf.c \
 							respbuf.c fmconfig.c filemanager.c cmdline.c \

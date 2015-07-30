@@ -1,0 +1,14 @@
+Source: filemanager-httpd
+Section: web
+Priority: optional
+Maintainer: Rafal <fatwildcat@gmail.com>
+Build-Depends: debhelper (>= 9), autotools-dev, lsb-base (>= 3.2-14)
+Standards-Version: 3.9.6
+Homepage: https://github.com/rafaello7/filemanager-httpd
+
+Package: filemanager-httpd
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Tiny http server with file management via web
+ Tiny http server (serves only static contents) with built-in
+ possibility to manage files using web browser.
