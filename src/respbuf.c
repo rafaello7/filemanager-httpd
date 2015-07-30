@@ -21,6 +21,9 @@ RespBuf *resp_new(HttpStatus status)
     case HTTP_200_OK:
         statusStr = "200 OK";
         break;
+    case HTTP_301_MOVED_PERMANENTLY:
+        statusStr = "301 Moved Permanently";
+        break;
     case HTTP_403_FORBIDDEN:
         statusStr = "403 Forbidden";
         break;

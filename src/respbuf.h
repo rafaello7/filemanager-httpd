@@ -10,6 +10,7 @@ typedef struct RespBuf RespBuf;
 
 typedef enum {
     HTTP_200_OK                     = 200,
+    HTTP_301_MOVED_PERMANENTLY      = 301,
     HTTP_403_FORBIDDEN              = 403,
     HTTP_404_NOT_FOUND              = 404,
     HTTP_405_METHOD_NOT_ALLOWED     = 405,

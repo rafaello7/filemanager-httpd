@@ -1,7 +1,7 @@
 #ifndef CONFIGFILE_H
 #define CONFIGFILE_H
 
-#include "servefile.h"
+#include "folder.h"
 
 
 /* Parses configuration file.
@@ -19,9 +19,20 @@ unsigned config_getListenPort(void);
 char *config_getSysPathForUrlPath(const char *urlPath);
 
 
-/* Returns file to serve for given URL path.
+Folder *config_getSubSharesForPath(const char *urlPath);
+
+
+/* Retrieves file to serve for dir. If such file does not exist, returns
+ * NULL. NULL is also returned when error occurs. In this case sysErrNo is
+ * set to errno. When no error occured, sysErrNo is set to 0.
  */
-ServeFile *config_getServeFile(const char *urlPath, int *sysErrNum);
+char *config_getIndexFile(const char *dir, int *sysErrNo);
+
+
+/* Returns non-zero when directory listing should be done when index.html
+ * file does not exist in the directory.
+ */
+int config_isDirListingAllowed(void);
 
 
 #endif /* CONFIGFILE_H */

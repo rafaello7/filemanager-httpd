@@ -147,9 +147,9 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     return NULL;
 }
 
-ServeFile *getSubSharesForPath(const char *urlPath)
+Folder *config_getSubSharesForPath(const char *urlPath)
 {
-    ServeFile *sf = NULL;
+    Folder *folder = NULL;
     const Share *cur;
     int pathLen;
     DataChunk dchPath, ent;
@@ -165,30 +165,79 @@ ServeFile *getSubSharesForPath(const char *urlPath)
             dch_SkipLeading(&dchPath, "/");
             if( dchPath.len > 0 ) {
                 dch_ExtractTillStr(&dchPath, &ent, "/");
-                if( sf == NULL )
-                    sf = sf_new(urlPath, NULL, 1);
-                sf_addEntryChunk(sf, &ent, 1, 0);
+                if( folder == NULL )
+                    folder = folder_new();
+                    //folder = folder_new(urlPath, NULL, 1);
+                folder_addEntryChunk(folder, &ent, 1, 0);
             }
         }
     }
-    return sf;
+    return folder;
 }
 
-ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
+char *config_getIndexFile(const char *dir, int *sysErrNo)
+{
+    DIR *d;
+    struct dirent *dp;
+    struct stat st;
+    unsigned dirNameLen, matchIdx, bestMatchIdx = gIndexPatternCount;
+    MemBuf *bestIdxFile = mb_new();
+
+    if( (d = opendir(dir)) != NULL ) {
+        MemBuf *filePathName = mb_new();
+        mb_appendStr(filePathName, dir);
+        if( dir[mb_dataLen(filePathName)-1] != '/' )
+            mb_appendStr(filePathName, "/");
+        dirNameLen = mb_dataLen(filePathName);
+        while( bestMatchIdx > 0 && (dp = readdir(d)) != NULL ) {
+            if( ! strcmp(dp->d_name, ".") || ! strcmp(dp->d_name, "..") )
+                continue;
+            for( matchIdx = 0; matchIdx < bestMatchIdx; ++matchIdx ) {
+                if( fnmatch(gIndexPatterns[matchIdx], dp->d_name,
+                            FNM_PATHNAME | FNM_PERIOD) == 0 )
+                    break;
+            }
+            if( matchIdx < bestMatchIdx ) {
+                mb_setDataExtend(filePathName, dirNameLen, dp->d_name,
+                        strlen(dp->d_name) + 1);
+                if( stat(mb_data(filePathName), &st) == 0 &&
+                        ! S_ISDIR(st.st_mode) )
+                {
+                    mb_setDataExtend(bestIdxFile, 0, mb_data(filePathName),
+                            mb_dataLen(filePathName));
+                }
+            }
+        }
+        closedir(d);
+        mb_free(filePathName);
+        *sysErrNo = 0;
+    }else{
+        *sysErrNo = errno;
+    }
+    return mb_unbox_free(bestIdxFile);
+}
+
+int config_isDirListingAllowed(void)
+{
+    return gIsDirectoryListing;
+}
+
+#if 0
+ServeFile *config_loadServeFile(const char *urlPath, int *sysErrNo)
 {
     DIR *d;
     struct dirent *dp;
     struct stat st;
     char *sysPath;
     unsigned dirNameLen, matchIdx, bestMatchIdx = gIndexPatternCount;
-    MemBuf *bestPath;
+    MemBuf *bestIdxFile;
     ServeFile *sf = NULL;
 
     *sysErrNo = ENOENT;
     sysPath = config_getSysPathForUrlPath(urlPath);
     if( sysPath != NULL ) {
         if( (d = opendir(sysPath)) != NULL ) {
-            bestPath = mb_new();
+            bestIdxFile = mb_new();
             MemBuf *filePathName = mb_new();
             mb_appendStr(filePathName, sysPath);
             if( sysPath[mb_dataLen(filePathName)-1] != '/' )
@@ -208,13 +257,13 @@ ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
                     if( stat(mb_data(filePathName), &st) == 0 &&
                             ! S_ISDIR(st.st_mode) )
                     {
-                        mb_setDataExtend(bestPath, 0, mb_data(filePathName),
+                        mb_setDataExtend(bestIdxFile, 0, mb_data(filePathName),
                                 mb_dataLen(filePathName));
                     }
                 }
             }
-            if( mb_dataLen(bestPath) > 0 ) {
-                sf = sf_new(urlPath, mb_data(bestPath), 0);
+            if( mb_dataLen(bestIdxFile) > 0 ) {
+                sf = sf_new(urlPath, mb_data(bestIdxFile), 0);
             }else if( gIsDirectoryListing ) {
                 rewinddir(d);
                 sf = sf_new(urlPath, sysPath, 1);
@@ -232,7 +281,7 @@ ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
             }
             closedir(d);
             mb_free(filePathName);
-            mb_free(bestPath);
+            mb_free(bestIdxFile);
         }else if( errno == ENOTDIR ) {
             sf = sf_new(urlPath, sysPath, 0);
         }else{
@@ -244,4 +293,4 @@ ServeFile *config_getServeFile(const char *urlPath, int *sysErrNo)
     }
     return sf;
 }
-
+#endif
