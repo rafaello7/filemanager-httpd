@@ -810,6 +810,7 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
                     if( indexFile != NULL ) {
                         free(sysPath);
                         sysPath = indexFile;
+                        isFolder = 0;
                     }else if( sysErrNo == 0 ) {
                         if( config_isDirListingAllowed() )
                             folder = folder_loadDir(sysPath, &sysErrNo);

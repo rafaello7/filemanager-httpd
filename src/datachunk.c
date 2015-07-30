@@ -190,13 +190,9 @@ int dch_IndexOfStr(const DataChunk *dch, const char *str)
 
 char *dch_DupToStr(const DataChunk *dch)
 {
-    char *res = NULL;
-   
-    if( dch->len > 0 ) {
-        res = malloc(dch->len + 1);
-        memcpy(res, dch->data, dch->len);
-        res[dch->len] = '\0';
-    }
+    char *res = malloc(dch->len + 1);
+    memcpy(res, dch->data, dch->len);
+    res[dch->len] = '\0';
     return res;
 }
 

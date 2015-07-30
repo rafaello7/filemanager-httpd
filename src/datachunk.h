@@ -120,6 +120,7 @@ int dch_IndexOfStr(const DataChunk*, const char*);
 
 /* Returns a copy of the data chunk. The copy is terminated with zero byte.
  * The copy should be released by free().
+ * Never returns NULL. For empty chunk the empty string is returned.
  */
 char *dch_DupToStr(const DataChunk*);
 

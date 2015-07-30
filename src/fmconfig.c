@@ -44,70 +44,69 @@ void config_parse(void)
     DataChunk dchName, dchValue, dchPatt;
     int shareCount = 0, lineNo = 0;
 
-    if( gShares == NULL ) {
-        configFName = cmdline_getConfigFileName();
-        if( (fp = fopen(configFName, "r")) != NULL ) {
-            gIsDirectoryListing = 0;
-            while( fgets(buf, sizeof(buf), fp) != NULL ) {
-                ++lineNo;
-                dch_InitWithStr(&dchValue, buf);
-                dch_TrimWS(&dchValue);
-                if( dchValue.len == 0 || *dchValue.data == '#' )
-                    continue;
-                if( dch_ExtractTillStrStripWS(&dchValue, &dchName, "=") ) {
-                    if( dch_StartsWithStr(&dchName, "/") ) {
-                        gShares = realloc(gShares,
-                                (shareCount+1) * sizeof(Share));
-                        gShares[shareCount].urlpath = dch_DupToStr(&dchName);
-                        gShares[shareCount].syspath = dch_DupToStr(&dchValue);
-                        ++shareCount;
-                    }else if( dch_EqualsStr(&dchName, "index") ) {
-                        while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
-                            if( dch_EqualsStr(&dchPatt, ".") )
-                                gIsDirectoryListing = 1;
-                            else{
-                                gIndexPatterns = realloc(gIndexPatterns,
-                                        (gIndexPatternCount+1) *
-                                        sizeof(const char*));
-                                gIndexPatterns[gIndexPatternCount++] =
-                                    dch_DupToStr(&dchPatt);
-                            }
+    configFName = cmdline_getConfigFileName();
+    if( (fp = fopen(configFName, "r")) != NULL ) {
+        gIsDirectoryListing = 0;
+        while( fgets(buf, sizeof(buf), fp) != NULL ) {
+            ++lineNo;
+            dch_InitWithStr(&dchValue, buf);
+            dch_TrimWS(&dchValue);
+            if( dchValue.len == 0 || *dchValue.data == '#' )
+                continue;
+            if( dch_ExtractTillStrStripWS(&dchValue, &dchName, "=") ) {
+                if( dch_StartsWithStr(&dchName, "/") ) {
+                    gShares = realloc(gShares,
+                            (shareCount+1) * sizeof(Share));
+                    dch_TrimTrailing(&dchName, "/");
+                    gShares[shareCount].urlpath = dch_DupToStr(&dchName);
+                    dch_TrimTrailing(&dchValue, "/");
+                    gShares[shareCount].syspath = dch_DupToStr(&dchValue);
+                    ++shareCount;
+                }else if( dch_EqualsStr(&dchName, "index") ) {
+                    while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
+                        if( dch_EqualsStr(&dchPatt, ".") )
+                            gIsDirectoryListing = 1;
+                        else{
+                            gIndexPatterns = realloc(gIndexPatterns,
+                                (gIndexPatternCount+1) * sizeof(const char*));
+                            gIndexPatterns[gIndexPatternCount++] =
+                                dch_DupToStr(&dchPatt);
                         }
-                    }else if( dch_EqualsStr(&dchName, "port") ) {
-                        if( ! dch_ToUInt(&dchValue, 0, &gListenPort) )
-                            fprintf(stderr, "%s:%d warning: unrecognized port",
-                                    configFName, lineNo);
-                    }else if( dch_EqualsStr(&dchName, "user") ) {
-                        gSwitchUser = dch_DupToStr(&dchValue);
-                    }else{
-                        fprintf(stderr, "%s:%d warning: unrecognized option "
-                                "\"%.*s\", ignored\n", configFName, lineNo,
-                                dchName.len, dchName.data);
                     }
+                }else if( dch_EqualsStr(&dchName, "port") ) {
+                    if( ! dch_ToUInt(&dchValue, 0, &gListenPort) )
+                        fprintf(stderr, "%s:%d warning: unrecognized port",
+                                configFName, lineNo);
+                }else if( dch_EqualsStr(&dchName, "user") ) {
+                    gSwitchUser = dch_DupToStr(&dchValue);
                 }else{
-                    fprintf(stderr, "%s:%d warning: missing '='; "
-                            "line ignored\n", configFName, lineNo);
+                    fprintf(stderr, "%s:%d warning: unrecognized option "
+                            "\"%.*s\", ignored\n", configFName, lineNo,
+                            dchName.len, dchName.data);
                 }
+            }else{
+                fprintf(stderr, "%s:%d warning: missing '='; "
+                        "line ignored\n", configFName, lineNo);
             }
-        }else{
-            fprintf(stderr, "WARN: unable to open configuration file %s: %s\n",
-                    configFName, strerror(errno));
         }
-        if( shareCount == 0 ) {
-            gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
-            gShares[shareCount].urlpath = "/";
-            gShares[shareCount].syspath = "/var/www/html";
-            ++shareCount;
-        }
-        gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
-        gShares[shareCount].urlpath = NULL;
-        gShares[shareCount].syspath = NULL;
-        if( gListenPort == 0 ) {
-            gListenPort = geteuid() == 0 ? 80 : 8000;
-        }
-        if( gIndexPatternCount == 0 )
-            gIsDirectoryListing = 1;
+    }else{
+        fprintf(stderr, "WARN: unable to open configuration file %s: %s\n",
+                configFName, strerror(errno));
     }
+    if( shareCount == 0 ) {
+        gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
+        gShares[shareCount].urlpath = "";
+        gShares[shareCount].syspath = "/var/www/html";
+        ++shareCount;
+    }
+    gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
+    gShares[shareCount].urlpath = NULL;
+    gShares[shareCount].syspath = NULL;
+    if( gListenPort == 0 ) {
+        gListenPort = geteuid() == 0 ? 80 : 8000;
+    }
+    if( gIndexPatternCount == 0 )
+        gIsDirectoryListing = 1;
 }
 
 unsigned config_getListenPort(void)
@@ -120,7 +119,7 @@ int config_switchToTargetUser(void)
     int res = 1;
     struct passwd *pwd;
 
-    if( gSwitchUser && geteuid() == 0 ) {
+    if( gSwitchUser[0] && geteuid() == 0 ) {
         res = 0;
         if( (pwd = getpwnam(gSwitchUser)) != NULL ) {
             if( setgid(pwd->pw_gid) != 0 )
@@ -145,8 +144,6 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     urlPathLen = strlen(urlPath);
     for(cur = gShares; cur->urlpath; ++cur) {
         int shLen = strlen(cur->urlpath);
-        while( shLen > 0 && cur->urlpath[shLen-1] == '/' )
-            --shLen;
         if( shLen > urlPathLen || shLen <= bestShLen )
             continue;
         if( !strncmp(urlPath, cur->urlpath, shLen) &&
@@ -159,8 +156,6 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     if( best != NULL ) {
         MemBuf *filePathName = mb_new();
         sysPathLen = strlen(best->syspath);
-        while( sysPathLen > 0 && best->syspath[sysPathLen-1] == '/' )
-            --sysPathLen;
         mb_appendData(filePathName, best->syspath, sysPathLen);
         if( urlPathLen > bestShLen ) {
             mb_appendData(filePathName, urlPath + bestShLen,
@@ -179,6 +174,7 @@ Folder *config_getSubSharesForPath(const char *urlPath)
     const Share *cur;
     int pathLen;
     DataChunk dchPath, ent;
+    const FolderEntry *fe;
 
     pathLen = strlen(urlPath);
     while( pathLen > 0 && urlPath[pathLen-1] == '/' )
@@ -193,8 +189,12 @@ Folder *config_getSubSharesForPath(const char *urlPath)
                 dch_ExtractTillStr(&dchPath, &ent, "/");
                 if( folder == NULL )
                     folder = folder_new();
-                    //folder = folder_new(urlPath, NULL, 1);
-                folder_addEntryChunk(folder, &ent, 1, 0);
+                /* avoid duplicates */
+                for(fe = folder_getEntries(folder); fe->fileName != NULL &&
+                        !dch_EqualsStr(&ent, fe->fileName); ++fe)
+                    ;
+                if( fe->fileName == NULL )
+                    folder_addEntryChunk(folder, &ent, 1, 0);
             }
         }
     }
