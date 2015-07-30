@@ -335,7 +335,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 resp_appendStr(resp, "/</option>\n");
             }
             resp_appendStrL(resp, "<option selected>",  urlPathEsc,
-                    "/</option>\n", NULL);
+                    urlPathLen == 1 ? "" : "/", "</option>\n", NULL);
             for(optent = folder_getEntries(folder); optent->fileName; ++optent){
                 if( optent != cur_ent && optent->isDir ) {
                     resp_appendStrL(resp, "<option>", urlPathEsc, "/",
