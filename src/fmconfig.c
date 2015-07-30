@@ -90,7 +90,7 @@ void config_parse(void)
                 }
             }
         }else{
-            fprintf(stderr, "unable to open configuration file %s: %s\n",
+            fprintf(stderr, "WARN: unable to open configuration file %s: %s\n",
                     configFName, strerror(errno));
         }
         if( shareCount == 0 ) {
