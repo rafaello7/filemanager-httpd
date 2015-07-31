@@ -13,8 +13,6 @@
 
 # Author: Rafal <fatwildcat@gmail.com>
 
-# Do NOT "set -e"
-
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="filemanager-httpd"
 NAME=filemanager-httpd
