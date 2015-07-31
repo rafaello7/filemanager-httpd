@@ -127,8 +127,15 @@ static void mainloop(void)
                 if( (wr = write(conn->fd,
                         mb_data(conn->response) + conn->responseOff,
                         mb_dataLen(conn->response) - conn->responseOff)) < 0 )
-                    fatal("write");
-                conn->responseOff += wr;
+                {
+                    /* ECONNRESET occurs when peer has closed connection
+                     * without receiving all data; not worthy to notify */
+                    if( errno != ECONNRESET )
+                        perror("write");
+                    conn->responseOff = mb_dataLen(conn->response);
+                }else{
+                    conn->responseOff += wr;
+                }
                 if( conn->responseOff == mb_dataLen(conn->response) ) {
                     FD_CLR(conn->fd, &writeFds);
                     freeConn(conn);
