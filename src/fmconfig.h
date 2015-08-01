@@ -4,6 +4,12 @@
 #include "folder.h"
 
 
+enum PrivilegedAction {
+    PA_SERVE_PAGE,
+    PA_LIST_FOLDER,
+    PA_MODIFY,
+};
+
 /* Parses configuration file.
  */
 void config_parse(void);
@@ -13,7 +19,7 @@ unsigned config_getListenPort(void);
 
 /* Switches to user specified in configuration file.
  */
-int config_switchToTargetUser(void);
+bool config_switchToTargetUser(void);
 
 /* Returns path in file system corresponding to given path in URL.
  * Returns NULL when the URL path does not have any corresponding
@@ -33,10 +39,20 @@ Folder *config_getSubSharesForPath(const char *urlPath);
 char *config_getIndexFile(const char *dir, int *sysErrNo);
 
 
-/* Returns non-zero when directory listing should be done when index.html
- * file does not exist in the directory.
+/* Parameter is the "Authorization" header field value.
+ * Returns true when the client authorization has passed, false otherwise.
  */
-int config_isDirListingAllowed(void);
+bool config_isClientAuthorized(const char *authorization);
 
+
+/* Returns true when the privileged action is allowed.
+ */
+bool config_isActionAllowed(enum PrivilegedAction, bool isLoggedIn);
+
+
+/* Returns true when more privileged actions are allowed by
+ * logged in user than not logged in.
+ */
+bool config_givesLoginMorePrivileges(void);
 
 #endif /* CONFIGFILE_H */

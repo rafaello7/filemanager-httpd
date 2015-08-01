@@ -27,25 +27,25 @@ void dch_InitWithStr(DataChunk*, const char *str);
 
 /* Moves chunk begin forward by size bytes. The chunk end location is
  * kept unchanged.
- * Returns non-zero on success, zero when size exceeds chunk length.
+ * Returns true on success, false when size exceeds chunk length.
  */
-int dch_Shift(DataChunk*, unsigned size);
+bool dch_Shift(DataChunk*, unsigned size);
 
 
 /* Moves chunk begin after first occurrence of the specified character.
- * Returns non-zero on success, zero when the chunk does not contain
+ * Returns true on success, false when the chunk does not contain
  * such character. When fail, the chunk is unchanged.
  *
  * Chunk end location stays unchanged.
  */
-int dch_ShiftAfterChr(DataChunk*, char);
+bool dch_ShiftAfterChr(DataChunk*, char);
 
 
 /* Moves chunk begin after first occurrence of the specified string.
- * Returns non-zero on success, zero when the chunk does not contain
+ * Returns true on success, false when the chunk does not contain
  * such string.
  */
-int dch_ShiftAfterStr(DataChunk*, const char*);
+bool dch_ShiftAfterStr(DataChunk*, const char*);
 
 
 /* Moves begin of data chunk forward, skipping characters specified in str
@@ -68,22 +68,22 @@ void dch_TrimWS(DataChunk*);
  * The dch begin is shifted after end of the found string.
  * If the string does not appear in dch, the subChunk is set to whole dch and
  * dch is set to empty.
- * Returns non-zero when the string was found, 0 otherwise.
+ * Returns true when the string was found, false otherwise.
  */
-int dch_ExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str);
+bool dch_ExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str);
 
 
 /* Like dch_ExtractTillStr, but the ending string is constructed as
  * concatenation of two strings passed as parameters.
  */
-int dch_ExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
+bool dch_ExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
         const char *str1, const char *str2);
 
 
 /* Like dch_ExtractTillStr, but additionally white spaces surrounding the
  * string are also removed from resulting chunks.
  */
-int dch_ExtractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
+bool dch_ExtractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
         const char *str);
 
 
@@ -92,24 +92,23 @@ int dch_ExtractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
  * first white space. The dch begin is shifted after end of white spaces
  * section. If no white space appears in dch, the subChunk is set to whole
  * dch and dch is set to empty.
- * Returns non-zero when the dch contains any non-whitespace characters,
- * 0 otherwise.
+ * Returns true when the dch contains any non-whitespace characters,
+ * false otherwise.
  */
-int dch_ExtractTillWS(DataChunk *dch, DataChunk *subChunk);
+bool dch_ExtractTillWS(DataChunk *dch, DataChunk *subChunk);
 
 
-/* Returns non-zero when the data chunk is equal to the specified string,
+/* Returns true when the data chunk is equal to the specified string,
  * i.e. the chunk length is equal to the string length and the chunk bytes
  * are equal to the string (zero byte terminating string is not considered
  * a part of string).
  */
-int dch_EqualsStr(const DataChunk*, const char*);
+bool dch_EqualsStr(const DataChunk*, const char*);
 
 
-/* Returns non-zero when the chunk initial part is equal to the specified
- * string.
+/* Returns true when the chunk initial part is equal to the specified string.
  */
-int dch_StartsWithStr(const DataChunk*, const char*);
+bool dch_StartsWithStr(const DataChunk*, const char*);
 
 
 /* Returns index of first occurrence of the specified string within data chunk.
@@ -126,8 +125,8 @@ char *dch_DupToStr(const DataChunk*);
 
 
 /* Converts string in chunk to unsigned integer.
- * Returns non-zero on success
+ * Returns true on success
  */
-int dch_ToUInt(const DataChunk*, int base, unsigned*);
+bool dch_ToUInt(const DataChunk*, int base, unsigned*);
 
 #endif /* DATACHUNK_H */

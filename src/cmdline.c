@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "cmdline.h"
 #include <unistd.h>
 #include <stdio.h>
@@ -12,7 +13,7 @@ static void usage(void)
         "\n");
 }
 
-int cmdline_parse(int argc, char *argv[])
+bool cmdline_parse(int argc, char *argv[])
 {
     int opt;
 
@@ -23,10 +24,10 @@ int cmdline_parse(int argc, char *argv[])
             break;
         default:
             usage();
-            return 0;
+            return false;
         }
     }
-    return 1;
+    return true;
 }
 
 const char *cmdline_getConfigFileName(void)

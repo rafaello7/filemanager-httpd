@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include "filemanager.h"
 #include "fmconfig.h"
 #include "datachunk.h"
@@ -52,7 +53,7 @@ static const char response_header[] =
     "<script>\n"
     "    function showOptions(th) {\n"
     "        th.parentNode.nextElementSibling.style.display = \"table-row\";\n"
-    "        th.firstElementChild.textContent = \"-\";\n"
+    "        th.firstElementChild.innerHTML = \"&minus;\";\n"
     "        th.onclick = function() { hideOptions(th); };\n"
     "    }\n"
     "    function hideOptions(th) {\n"
@@ -93,6 +94,12 @@ static const char response_header[] =
     "        border-bottom-style: solid;\n"
     "    }\n"
     "</style>\n";
+
+static const char response_login_button[] =
+    "<form style=\"float: right\" method=\"POST\" "
+    "enctype=\"multipart/form-data\">\n"
+    "<input type=\"submit\" name=\"do_login\" value=\"Login\">\n"
+    "</form>\n";
 
 static const char response_footer[] =
     "<p><hr></p>\n"
@@ -164,7 +171,7 @@ static const char *escapeHtml(const char *s, int isInJavascriptStr)
     return res;
 }
 
-static RespBuf *printMovedAddSlash(const char *urlPath, int onlyHead)
+static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
 {
     char hostname[HOST_NAME_MAX], *newPath;
     const char *escaped;
@@ -190,17 +197,8 @@ static RespBuf *printMovedAddSlash(const char *urlPath, int onlyHead)
     return resp;
 }
 
-static void print_error(RespBuf *resp, const char *errDetail)
-{
-    if( errDetail != NULL ) {
-        resp_appendStrL(resp,
-                "<h3 style=\"text-align: center; background-color: gold\">",
-                escapeHtml(errDetail, 0), "</h3>\n", NULL);
-    }
-}
-
 static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
-        const char *path, int onlyHead)
+        const char *path, bool onlyHead, bool showLoginButton)
 {
     char hostname[HOST_NAME_MAX];
     RespBuf *resp;
@@ -211,17 +209,23 @@ static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
         gethostname(hostname, sizeof(hostname));
         resp_appendStrL(resp, "<html><head><title>", escapeHtml(path, 0),
             " on ", escapeHtml(hostname, 0), "</title></head><body>\n", NULL);
-        print_error(resp, resp_getErrorMessage(resp));
-        if( mesg != NULL ) {
+        if( showLoginButton )
+            resp_appendStr(resp, response_login_button);
+        resp_appendStrL(resp,
+            "&nbsp;<div style=\"text-align: center; margin: 150px 0px\">\n"
+            "<span style=\"font-size: x-large; border: 1px solid #FFF0B0; "
+            "background-color: #FFFCF0; padding: 50px 100px\">\n",
+            escapeHtml(resp_getErrorMessage(resp), 0),
+            "</span></div>\n", NULL);
+        if( mesg != NULL )
             resp_appendStrL(resp, "<p>", escapeHtml(mesg, 0), "</p>", NULL);
-        }
         resp_appendStr(resp, "</body></html>\n");
     }
     return resp;
 }
 
 static RespBuf *printErrorPage(int sysErrno, const char *path,
-        int onlyHead)
+        bool onlyHead, bool showLoginButton)
 {
     HttpStatus status;
     const char *mesg = NULL;
@@ -243,11 +247,25 @@ static RespBuf *printErrorPage(int sysErrno, const char *path,
         mesg = strerror(sysErrno);
         break;
     }
-    return printMesgPage(status, mesg, path, onlyHead);
+    return printMesgPage(status, mesg, path, onlyHead, showLoginButton);
+}
+
+static RespBuf *printUnauthorized(const char *urlPath, bool onlyHead)
+{
+    char hostname[HOST_NAME_MAX], authHeader[HOST_NAME_MAX+50];
+    RespBuf *resp;
+
+    resp = printMesgPage(HTTP_401_UNAUTHORIZED, NULL, urlPath, onlyHead, false);
+    gethostname(hostname, sizeof(hostname));
+    sprintf(authHeader, "Basic realm=\"Logon to %s\"", hostname);
+    resp_appendHeader(resp, "WWW-Authenticate", authHeader);
+    resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
+    return resp;
 }
 
 static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
-        int isModifiable, const char *opErrorMsg, int onlyHead)
+        bool isModifiable, bool showLoginButton, const char *opErrorMsg,
+        bool onlyHead)
 {
     char hostname[HOST_NAME_MAX];
     char *urlPathNoSl;
@@ -273,11 +291,9 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     resp_appendStrL(resp, "<html><head><title>", urlPathEsc, " on ",
             hostname_esc, "</title>", response_header, "</head>\n<body>\n",
             NULL);
-    /* error bar */
-    print_error(resp, opErrorMsg);
     /* host name as link to root */
-    resp_appendStrL(resp, "<h3><a href=\"/\">", hostname_esc, "</a>&emsp;",
-            NULL);
+    resp_appendStrL(resp, "<span style=\"font-size: large; font-weight: bold\">"
+            "<a href=\"/\">", hostname_esc, "</a>&emsp;", NULL);
     /* current path as link list */
     if( urlPathLen > 1 ) {
         for(s = urlPathEsc+1; (sn = strchr(s, '/')) != NULL; s = sn+1) {
@@ -290,26 +306,43 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendStrL(resp, "/<a href=\"", urlPathEsc, "/\">", s, "</a>",
                 NULL);
     }
-    resp_appendStr(resp, "</h3>\n<table><tbody>\n");
+    resp_appendStr(resp, "</span>\n");
+    if( showLoginButton )
+        resp_appendStr(resp, response_login_button);
+    /* error bar */
+    if( opErrorMsg != NULL ) {
+        resp_appendStrL(resp,
+                "<div style=\"font-size: large; text-align: center; "
+                "background-color: gold; padding: 2px; margin-top: 4px\">",
+                escapeHtml(opErrorMsg, 0), "</div>\n", NULL);
+    }
+    resp_appendStr(resp, "<table><tbody>\n");
     /* link to parent - " .. " */
     if( urlPathLen > 1 ) {
-        resp_appendStr(resp, "<tr>\n"
-             "<td><span class=\"plusgray\">+</span></td>\n"
-             "<td><a style=\"white-space: pre\" href=\"");
+        resp_appendStrL(resp, "<tr>\n<td><span class=\"plusgray\">",
+                isModifiable ? "+" : "&sdot;", "</span></td>\n"
+                 "<td><a style=\"white-space: pre\" href=\"", NULL);
         resp_appendData(resp, urlPathEsc, strrchr(urlPathEsc, '/')-urlPathEsc);
         resp_appendStr(resp, "/\"> .. </a></td><td></td>\n</tr>\n");
     }
     /* entry list */
     for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
-        /* red plus */
-        resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
-                "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
-                "\">+</span></td>", NULL);
+        /* colored square */
+        if( isModifiable ) {
+            resp_appendStrL(resp, "<tr><td onclick=\"showOptions(this)\"><span "
+                    "class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
+                    "\">+</span></td>", NULL);
+        }else{
+            resp_appendStrL(resp, "<tr><td><span class=\"",
+                    cur_ent->isDir ? "plusdir" : "plusfile",
+                    "\">&sdot;</span></td>", NULL);
+        }
         /* entry name as link */
         fname_esc = escapeHtml(cur_ent->fileName, 0);
         resp_appendStrL(resp, "<td><a href=\"", urlPathEsc,
                 urlPathLen == 1 ? "" : "/", fname_esc,
                 cur_ent->isDir ? "/" : "", "\">", fname_esc, "</a></td>", NULL);
+        /* optional entry size */
         if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>");
         else{
@@ -321,9 +354,10 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendStr(resp, "</tr>");
 
         /* menu displayed after click red plus */
-        resp_appendStr(resp, "<tr style=\"display: none\"><td></td>\n");
         if( isModifiable ) {
-            resp_appendStrL(resp, "<td colspan=\"2\"><form method=\"POST\" "
+            resp_appendStrL(resp,
+                    "<tr style=\"display: none\"><td></td>\n"
+                    "<td colspan=\"2\"><form method=\"POST\" "
                     "enctype=\"multipart/form-data\">"
                     "<input type=\"hidden\" name=\"file\" value=\"",
                     fname_esc, "\"/>new name:<select name=\"new_dir\">\n",
@@ -351,12 +385,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                     "value=\"Delete\" onclick=\"return confirm("
                     "'delete &quot;", escapeHtml(cur_ent->fileName, 1),
                     "&quot; ?')\"/>\n"
-                    "</form></td>\n", NULL);
-        }else{
-            resp_appendStr(resp,
-                    "<td colspan=\"2\">No action possible</td>\n");
+                    "</form></td>\n</tr>\n", NULL);
         }
-        resp_appendStr(resp, "</tr>\n");
     }
     /* footer */
     resp_appendStrL(resp, "</tbody></table>",
@@ -443,7 +473,7 @@ static const char *getContentTypeByFileExt(const char *fname)
 }
 
 static RespBuf *send_file(const char *urlPath, const char *sysPath,
-        int onlyHead)
+        bool onlyHead)
 {
     FILE *fp;
     char buf[65536];
@@ -465,7 +495,7 @@ static RespBuf *send_file(const char *urlPath, const char *sysPath,
         }
         fclose(fp);
     }else{
-        resp = printErrorPage(errno, urlPath, onlyHead);
+        resp = printErrorPage(errno, urlPath, onlyHead, false);
     }
     return resp;
 }
@@ -664,7 +694,7 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
-    enum { RT_UNKNOWN, RT_UPLOAD, RT_RENAME, RT_NEWDIR, RT_DELETE }
+    enum { RT_UNKNOWN, RT_UPLOAD, RT_RENAME, RT_NEWDIR, RT_DELETE, RT_LOGIN }
         request_type = RT_UNKNOWN;
     MemBuf *res = NULL;
 
@@ -715,6 +745,8 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
                 request_type = RT_NEWDIR;
             }else if( dch_EqualsStr(&part.name, "do_delete") ) {
                 request_type = RT_DELETE;
+            }else if( dch_EqualsStr(&part.name, "do_login") ) {
+                request_type = RT_LOGIN;
             }else if( dch_EqualsStr(&part.name, "file") ) {
                 file_part = part;
             }else if( dch_EqualsStr(&part.name, "new_dir") ) {
@@ -744,6 +776,8 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
     case RT_DELETE:
         res = delete_file(sysPath, &file_part.data);
         break;
+    case RT_LOGIN:
+        break;
     default:
         res = fmtError(0, "unrecognized request", NULL);
         break;
@@ -752,91 +786,107 @@ err:
     return res;
 }
 
+static RespBuf *doProcessReqNormal(const RequestBuf *req)
+{
+    int sysErrNo = 0;
+    struct stat st;
+    const char *queryFile = req_getPath(req);
+    char *sysPath = config_getSysPathForUrlPath(queryFile);
+    bool isHeadReq;
+    Folder *folder = NULL;
+    int isFolder = 0;
+    RespBuf *resp = NULL;
+
+    isHeadReq = !strcmp(req_getMethod(req), "HEAD");
+    if( sysPath != NULL ) {
+        if( stat(sysPath, &st) == 0 )
+            isFolder = S_ISDIR(st.st_mode);
+        else
+            sysErrNo = errno;
+    }else{
+        if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
+            sysErrNo = ENOENT;
+        else
+            isFolder = 1;
+    }
+
+    if( sysErrNo == 0 && isFolder && queryFile[strlen(queryFile)-1] != '/' ) {
+        resp = printMovedAddSlash(queryFile, isHeadReq);
+    }else{
+        char *opErrorMsg = NULL;
+        if( sysErrNo == 0 ) {
+            if( !strcmp(req_getMethod(req), "POST") ) {
+                if( sysPath != NULL ) {
+                    MemBuf *opErrBuf = process_post(sysPath,
+                            req_getHeaderVal(req, "Content-Type"),
+                            req_getBody(req));
+                    if( opErrBuf != NULL ) {
+                        mb_appendData(opErrBuf, "", 1);
+                        opErrorMsg = mb_unbox_free(opErrBuf);
+                    }
+                }else{
+                    opErrorMsg = strdup("request not allowed here");
+                }
+            }
+            if( isFolder && folder == NULL ) {
+                char *indexFile = config_getIndexFile(sysPath, &sysErrNo);
+                if( indexFile != NULL ) {
+                    free(sysPath);
+                    sysPath = indexFile;
+                    isFolder = 0;
+                }else if( sysErrNo == 0 ) {
+                    if( req_isActionAllowed(req, PA_LIST_FOLDER) )
+                        folder = folder_loadDir(sysPath, &sysErrNo);
+                    else
+                        sysErrNo = ENOENT;
+                }
+            }
+        }
+        if( sysErrNo == 0 ) {
+            if( isFolder ) {
+                bool isModifiable = sysPath == NULL ? 0 :
+                    req_isActionAllowed(req, PA_MODIFY) &&
+                        access(sysPath, W_OK) == 0;
+                resp = printFolderContents(queryFile, folder, isModifiable,
+                        req_isWorthPuttingLogOnButton(req),
+                        opErrorMsg, isHeadReq);
+            }else if( opErrorMsg == NULL ) {
+                resp = send_file(queryFile, sysPath, isHeadReq);
+            }else{
+                resp = printMesgPage(HTTP_200_OK, opErrorMsg,
+                        queryFile, isHeadReq, false);
+            }
+        }else{
+            resp = printErrorPage(sysErrNo, queryFile, isHeadReq,
+                    req_isWorthPuttingLogOnButton(req));
+        }
+        free(opErrorMsg);
+    }
+    folder_free(folder);
+    free(sysPath);
+    return resp;
+}
+
 RespBuf *filemgr_processRequest(const RequestBuf *req)
 {
     unsigned queryFileLen, isHeadReq, isPostReq;
-    int sysErrNo;
     const char *queryFile;
     RespBuf *resp;
-    struct stat st;
 
     isHeadReq = !strcmp(req_getMethod(req), "HEAD");
     isPostReq = !strcmp(req_getMethod(req), "POST");
     queryFile = req_getPath(req);
     queryFileLen = strlen(queryFile);
-    if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
+    dolog("got: %s %s\n", req_getMethod(req), queryFile);
+    if( ! req_isActionAllowed(req, isPostReq ? PA_MODIFY : PA_SERVE_PAGE) ) {
+        resp = printUnauthorized(req_getPath(req), isHeadReq);
+    }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
     {
-        resp = printMesgPage(HTTP_403_FORBIDDEN, NULL, queryFile, isHeadReq);
+        resp = printMesgPage(HTTP_403_FORBIDDEN, NULL, queryFile,
+                isHeadReq, false);
     }else{
-        char *sysPath = config_getSysPathForUrlPath(queryFile);
-        Folder *folder = NULL;
-        int isFolder = 0;
-
-        resp = NULL;
-        sysErrNo = 0;
-        if( sysPath != NULL ) {
-            if( stat(sysPath, &st) == 0 )
-                isFolder = S_ISDIR(st.st_mode);
-            else
-                sysErrNo = errno;
-        }else{
-            if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
-                sysErrNo = ENOENT;
-            else
-                isFolder = 1;
-        }
-
-        if( sysErrNo == 0 && isFolder && queryFile[queryFileLen-1] != '/' ) {
-            resp = printMovedAddSlash(queryFile, isHeadReq);
-        }else{
-            char *opErrorMsg = NULL;
-            if( sysErrNo == 0 ) {
-                if( isPostReq ) {
-                    if( sysPath != NULL ) {
-                        MemBuf *opErrBuf = process_post(sysPath,
-                                req_getHeaderVal(req, "Content-Type"),
-                                req_getBody(req));
-                        if( opErrBuf != NULL ) {
-                            mb_appendData(opErrBuf, "", 1);
-                            opErrorMsg = mb_unbox_free(opErrBuf);
-                        }
-                    }else{
-                        opErrorMsg = strdup("request not allowed here");
-                    }
-                }
-                if( isFolder && folder == NULL ) {
-                    char *indexFile = config_getIndexFile(sysPath, &sysErrNo);
-                    if( indexFile != NULL ) {
-                        free(sysPath);
-                        sysPath = indexFile;
-                        isFolder = 0;
-                    }else if( sysErrNo == 0 ) {
-                        if( config_isDirListingAllowed() )
-                            folder = folder_loadDir(sysPath, &sysErrNo);
-                        else
-                            sysErrNo = ENOENT;
-                    }
-                }
-            }
-            if( sysErrNo == 0 ) {
-                if( isFolder ) {
-                    resp = printFolderContents(queryFile, folder,
-                            sysPath == NULL ? 0 : access(sysPath, W_OK) == 0,
-                            opErrorMsg, isHeadReq);
-                }else if( opErrorMsg == NULL ) {
-                    resp = send_file(queryFile, sysPath, isHeadReq);
-                }else{
-                    resp = printMesgPage(HTTP_200_OK, opErrorMsg,
-                            queryFile, isHeadReq);
-                }
-            }else{
-                resp = printErrorPage(sysErrNo, queryFile, isHeadReq);
-            }
-            free(opErrorMsg);
-        }
-        folder_free(folder);
-        free(sysPath);
+        resp = doProcessReqNormal(req);
     }
     return resp;
 }

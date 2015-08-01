@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "respbuf.h"
 #include "membuf.h"
 #include <stdio.h>
@@ -23,6 +24,9 @@ RespBuf *resp_new(HttpStatus status)
         break;
     case HTTP_301_MOVED_PERMANENTLY:
         statusStr = "301 Moved Permanently";
+        break;
+    case HTTP_401_UNAUTHORIZED:
+        statusStr = "401 Unauthorized";
         break;
     case HTTP_403_FORBIDDEN:
         statusStr = "403 Forbidden";
@@ -86,7 +90,7 @@ void resp_appendStrL(RespBuf *resp, const char *str1,
     }
 }
 
-MemBuf *resp_finish(RespBuf *resp, int onlyHead)
+MemBuf *resp_finish(RespBuf *resp, bool onlyHead)
 {
     char contentLength[20];
     MemBuf *res;

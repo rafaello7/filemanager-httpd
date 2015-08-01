@@ -2,7 +2,7 @@
 #define CMDLINE_H
 
 
-int cmdline_parse(int argc, char *argv[]);
+bool cmdline_parse(int argc, char *argv[]);
 
 
 const char *cmdline_getConfigFileName(void);

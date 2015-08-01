@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "fmconfig.h"
 #include "cmdline.h"
 #include "datachunk.h"
@@ -12,6 +13,13 @@
 #include <sys/stat.h>
 #include <pwd.h>
 
+
+enum AuthorizationOpt {
+    AO_NEVER,
+    AO_MODIFY,
+    AO_LISTING,
+    AO_ALWAYS
+};
 
 typedef struct {
     const char *urlpath;
@@ -29,11 +37,14 @@ static unsigned gIndexPatternCount;
 
 /* non-zero when "index" option contains "."
  */
-static unsigned gIsDirectoryListing = 1;
+static bool gIsDirectoryListingAllowed = true;
 
 /* List of shares, terminated with one with urlpath set to NULL
  */
 static Share *gShares;
+
+static enum AuthorizationOpt gAuthorizationOpt = AO_NEVER;
+static const char **gCredentials;
 
 
 void config_parse(void)
@@ -42,11 +53,11 @@ void config_parse(void)
     FILE *fp;
     char buf[1024];
     DataChunk dchName, dchValue, dchPatt;
-    int shareCount = 0, lineNo = 0;
+    int shareCount = 0, lineNo = 0, credentialCount = 0;
 
     configFName = cmdline_getConfigFileName();
     if( (fp = fopen(configFName, "r")) != NULL ) {
-        gIsDirectoryListing = 0;
+        gIsDirectoryListingAllowed = false;
         while( fgets(buf, sizeof(buf), fp) != NULL ) {
             ++lineNo;
             dch_InitWithStr(&dchValue, buf);
@@ -65,7 +76,7 @@ void config_parse(void)
                 }else if( dch_EqualsStr(&dchName, "index") ) {
                     while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
                         if( dch_EqualsStr(&dchPatt, ".") )
-                            gIsDirectoryListing = 1;
+                            gIsDirectoryListingAllowed = true;
                         else{
                             gIndexPatterns = realloc(gIndexPatterns,
                                 (gIndexPatternCount+1) * sizeof(const char*));
@@ -79,6 +90,25 @@ void config_parse(void)
                                 configFName, lineNo);
                 }else if( dch_EqualsStr(&dchName, "user") ) {
                     gSwitchUser = dch_DupToStr(&dchValue);
+                }else if( dch_EqualsStr(&dchName, "auth") ) {
+                    if( dch_EqualsStr(&dchValue, "never") ) {
+                        gAuthorizationOpt = AO_NEVER;
+                    }else if( dch_EqualsStr(&dchValue, "modify") ) {
+                        gAuthorizationOpt = AO_MODIFY;
+                    }else if( dch_EqualsStr(&dchValue, "listing") ) {
+                        gAuthorizationOpt = AO_LISTING;
+                    }else{
+                        if( ! dch_EqualsStr(&dchValue, "always") )
+                            fprintf(stderr, "%s:%d warning: wrong auth value; "
+                                    "assuming \"always\"\n",
+                                    configFName, lineNo);
+                        gAuthorizationOpt = AO_ALWAYS;
+                    }
+                }else if( dch_EqualsStr(&dchName, "credentials") ) {
+                    gCredentials = realloc(gCredentials,
+                            (credentialCount+1) * sizeof(char*));
+                    gCredentials[credentialCount] = dch_DupToStr(&dchValue);
+                    ++credentialCount;
                 }else{
                     fprintf(stderr, "%s:%d warning: unrecognized option "
                             "\"%.*s\", ignored\n", configFName, lineNo,
@@ -102,11 +132,16 @@ void config_parse(void)
     gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
     gShares[shareCount].urlpath = NULL;
     gShares[shareCount].syspath = NULL;
+    if( credentialCount > 0 ) {
+        gCredentials = realloc(gCredentials,
+                (credentialCount+1) * sizeof(char*));
+        gCredentials[credentialCount] = NULL;
+    }
     if( gListenPort == 0 ) {
         gListenPort = geteuid() == 0 ? 80 : 8000;
     }
     if( gIndexPatternCount == 0 )
-        gIsDirectoryListing = 1;
+        gIsDirectoryListingAllowed = true;
 }
 
 unsigned config_getListenPort(void)
@@ -114,18 +149,18 @@ unsigned config_getListenPort(void)
     return gListenPort;
 }
 
-int config_switchToTargetUser(void)
+bool config_switchToTargetUser(void)
 {
-    int res = 1;
+    int res = true;
     struct passwd *pwd;
 
     if( gSwitchUser[0] && geteuid() == 0 ) {
-        res = 0;
+        res = false;
         if( (pwd = getpwnam(gSwitchUser)) != NULL ) {
             if( setgid(pwd->pw_gid) != 0 )
                 fprintf(stderr, "WARN: setgid: %s\n", strerror(errno));
             if( setuid(pwd->pw_uid) == 0 )
-                res = 1;
+                res = true;
             else
                 fprintf(stderr, "setuid: %s\n", strerror(errno));
         }else{
@@ -243,8 +278,77 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
     return mb_unbox_free(bestIdxFile);
 }
 
-int config_isDirListingAllowed(void)
+static char *base64Decode(const char *s)
 {
-    return gIsDirectoryListing;
+    static const unsigned char base64chars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static int base64values[128];
+    unsigned i, b = 0, bits = 0;
+    unsigned char c;
+    char *res = malloc(strlen(s) / 4 * 3 + 3), *dest = res;
+
+    if( base64values['+'] == 0 ) {
+        for(i = 0; i < 128; ++i)
+            base64values[i] = -1;
+        for(i = 0; base64chars[i]; ++i)
+            base64values[base64chars[i]] = i;
+    }
+    while( (c = *s++) && c != '=' ) {
+        if( c < 128 && base64values[c] != -1 ) {
+            b = (b << 6) + base64values[c];
+            bits += 6;
+            if( bits >= 8 ) {
+                bits -= 8;
+                *dest++ = b >> bits & 0xff;
+            }
+        }
+    }
+    *dest = '\0';
+    return res;
+}
+
+bool config_isClientAuthorized(const char *authorization)
+{
+    char *authDec;
+    const char **cred;
+    bool res;
+
+    if( gCredentials == NULL )
+        res = true;
+    else if( authorization == NULL || strncasecmp(authorization, "Basic ", 6) )
+        res = false;
+    else{
+        authDec = base64Decode(authorization+6);
+        for(cred = gCredentials; *cred != NULL && strcmp(*cred, authDec);
+                ++cred)
+        {
+        }
+        free(authDec);
+        res = *cred != NULL;
+    }
+    return res;
+}
+
+bool config_isActionAllowed(enum PrivilegedAction pa, bool isLoggedIn)
+{
+    if( pa != PA_SERVE_PAGE && ! gIsDirectoryListingAllowed )
+        return false;
+    if( isLoggedIn || gAuthorizationOpt == AO_NEVER )
+        return true;
+    switch( pa ) {
+    case PA_SERVE_PAGE:
+        return gAuthorizationOpt == AO_LISTING ||
+            gAuthorizationOpt == AO_MODIFY;
+    case PA_LIST_FOLDER:
+        return gAuthorizationOpt == AO_MODIFY;
+    default:    /* PA_MODIFY */
+        break;
+    }
+    return false;
+}
+
+bool config_givesLoginMorePrivileges(void)
+{
+    return gAuthorizationOpt != AO_NEVER;
 }
 

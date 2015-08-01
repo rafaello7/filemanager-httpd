@@ -7,6 +7,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <stdbool.h>
 #include "filemanager.h"
 #include "fmconfig.h"
 #include "cmdline.h"

@@ -2,6 +2,7 @@
 #define REQUESTBUF_H
 
 #include "membuf.h"
+#include "fmconfig.h"
 
 
 /* HTTP request buffer
@@ -37,6 +38,18 @@ const char *req_getPath(const RequestBuf*);
  * specified name does not exist.
  */
 const char *req_getHeaderVal(const RequestBuf*, const char *headerName);
+
+
+/* Returns true when client might be interested with log in, i.e.:
+ *  1. Is not logged in yet
+ *  2. Some additional actions will be possible after login
+ */
+bool req_isWorthPuttingLogOnButton(const RequestBuf*);
+
+
+/* Returns true when user has privileges to perform given action.
+ */
+bool req_isActionAllowed(const RequestBuf*, enum PrivilegedAction);
 
 
 /* Returns the request body.

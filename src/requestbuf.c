@@ -1,7 +1,9 @@
+#include <stdbool.h>
 #include "requestbuf.h"
 #include "membuf.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 
 enum RequestReadState {
@@ -20,6 +22,7 @@ struct RequestBuf {
     char *chunkHdr;
     MemBuf *body;
     unsigned bodyReadLen;
+    bool isLoggedIn;
 };
 
 RequestBuf *req_new(void)
@@ -60,6 +63,16 @@ const char *req_getHeaderVal(const RequestBuf *req, const char *headerName)
         }
     }
     return NULL;
+}
+
+bool req_isWorthPuttingLogOnButton(const RequestBuf *req)
+{
+    return ! req->isLoggedIn && config_givesLoginMorePrivileges();
+}
+
+bool req_isActionAllowed(const RequestBuf *req, enum PrivilegedAction pa)
+{
+    return config_isActionAllowed(pa, req->isLoggedIn);
 }
 
 const MemBuf *req_getBody(const RequestBuf *req)
@@ -231,6 +244,12 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
             offset += soff;
         }else
             offset = len;
+    }
+    if( req->rrs == RRS_READ_FINISHED ) {
+        const char *auth = req_getHeaderVal(req, "Authorization");
+        req->isLoggedIn = config_isClientAuthorized(auth);
+        if( auth && ! req->isLoggedIn )
+            sleep(2); /* make dictionary attack harder */
     }
     return req->rrs == RRS_READ_FINISHED ? offset : -1;
 }

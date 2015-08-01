@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "folder.h"
 #include "membuf.h"
 #include <string.h>
@@ -25,7 +26,7 @@ Folder *folder_new(void)
     return res;
 }
 
-void folder_addEntryChunk(Folder *folder, const DataChunk *name, int isDir,
+void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
         unsigned size)
 {
     FolderEntry *fe;
@@ -43,7 +44,8 @@ void folder_addEntryChunk(Folder *folder, const DataChunk *name, int isDir,
     ++folder->entryCount;
 }
 
-void folder_addEntry(Folder *folder, const char *name, int isDir, unsigned size)
+void folder_addEntry(Folder *folder, const char *name, bool isDir,
+        unsigned size)
 {
     DataChunk dch;
 

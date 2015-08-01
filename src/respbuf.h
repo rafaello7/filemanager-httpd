@@ -11,6 +11,7 @@ typedef struct RespBuf RespBuf;
 typedef enum {
     HTTP_200_OK                     = 200,
     HTTP_301_MOVED_PERMANENTLY      = 301,
+    HTTP_401_UNAUTHORIZED           = 401,
     HTTP_403_FORBIDDEN              = 403,
     HTTP_404_NOT_FOUND              = 404,
     HTTP_405_METHOD_NOT_ALLOWED     = 405,
@@ -54,7 +55,7 @@ void resp_appendStrL(RespBuf*, const char *str1, const char *str2,  ...);
 
 /* Ends use of the response. Returns the response raw bytes to send.
  */
-MemBuf *resp_finish(RespBuf*, int onlyHead);
+MemBuf *resp_finish(RespBuf*, bool onlyHead);
 
 
 #endif /* RESPBUF_H */
