@@ -3,6 +3,7 @@
 #include "cmdline.h"
 #include "datachunk.h"
 #include "membuf.h"
+#include "md5calc.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,10 +16,10 @@
 
 
 enum AuthorizationOpt {
-    AO_NEVER,
+    AO_NONE,
     AO_MODIFY,
     AO_LISTING,
-    AO_ALWAYS
+    AO_ALL
 };
 
 typedef struct {
@@ -43,7 +44,7 @@ static bool gIsDirectoryListingAllowed = true;
  */
 static Share *gShares;
 
-static enum AuthorizationOpt gAuthorizationOpt = AO_NEVER;
+static enum AuthorizationOpt gAuthorizationOpt = AO_NONE;
 static const char **gCredentials;
 
 
@@ -91,18 +92,17 @@ void config_parse(void)
                 }else if( dch_EqualsStr(&dchName, "user") ) {
                     gSwitchUser = dch_DupToStr(&dchValue);
                 }else if( dch_EqualsStr(&dchName, "auth") ) {
-                    if( dch_EqualsStr(&dchValue, "never") ) {
-                        gAuthorizationOpt = AO_NEVER;
+                    if( dch_EqualsStr(&dchValue, "none") ) {
+                        gAuthorizationOpt = AO_NONE;
                     }else if( dch_EqualsStr(&dchValue, "modify") ) {
                         gAuthorizationOpt = AO_MODIFY;
                     }else if( dch_EqualsStr(&dchValue, "listing") ) {
                         gAuthorizationOpt = AO_LISTING;
                     }else{
-                        if( ! dch_EqualsStr(&dchValue, "always") )
+                        if( ! dch_EqualsStr(&dchValue, "all") )
                             fprintf(stderr, "%s:%d warning: wrong auth value; "
-                                    "assuming \"always\"\n",
-                                    configFName, lineNo);
-                        gAuthorizationOpt = AO_ALWAYS;
+                                    "assuming \"all\"\n", configFName, lineNo);
+                        gAuthorizationOpt = AO_ALL;
                     }
                 }else if( dch_EqualsStr(&dchName, "credentials") ) {
                     gCredentials = realloc(gCredentials,
@@ -309,7 +309,7 @@ static char *base64Decode(const char *s)
 
 bool config_isClientAuthorized(const char *authorization)
 {
-    char *authDec;
+    char md5[40], *authDec;
     const char **cred;
     bool res;
 
@@ -319,8 +319,9 @@ bool config_isClientAuthorized(const char *authorization)
         res = false;
     else{
         authDec = base64Decode(authorization+6);
-        for(cred = gCredentials; *cred != NULL && strcmp(*cred, authDec);
-                ++cred)
+        md5_calculate(md5, authDec, strlen(authDec));
+        for(cred = gCredentials; *cred != NULL &&
+                strcmp(*cred, authDec) && strcmp(*cred, md5); ++cred)
         {
         }
         free(authDec);
@@ -333,7 +334,7 @@ bool config_isActionAllowed(enum PrivilegedAction pa, bool isLoggedIn)
 {
     if( pa != PA_SERVE_PAGE && ! gIsDirectoryListingAllowed )
         return false;
-    if( isLoggedIn || gAuthorizationOpt == AO_NEVER )
+    if( isLoggedIn || gAuthorizationOpt == AO_NONE )
         return true;
     switch( pa ) {
     case PA_SERVE_PAGE:
@@ -349,6 +350,6 @@ bool config_isActionAllowed(enum PrivilegedAction pa, bool isLoggedIn)
 
 bool config_givesLoginMorePrivileges(void)
 {
-    return gAuthorizationOpt != AO_NEVER;
+    return gAuthorizationOpt != AO_NONE;
 }
 
