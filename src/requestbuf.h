@@ -40,6 +40,12 @@ const char *req_getPath(const RequestBuf*);
 const char *req_getHeaderVal(const RequestBuf*, const char *headerName);
 
 
+/* Returns true when request contains authorization header with valid
+ * credentials.
+ */
+bool req_isLoggedIn(const RequestBuf*);
+
+
 /* Returns true when client might be interested with log in, i.e.:
  *  1. Is not logged in yet
  *  2. Some additional actions will be possible after login

@@ -15,11 +15,11 @@
 #include <pwd.h>
 
 
-enum AuthorizationOpt {
-    AO_NONE,
-    AO_MODIFY,
-    AO_LISTING,
-    AO_ALL
+enum DirectoryOps {
+    DO_NONE,
+    DO_FILE,
+    DO_LISTING,
+    DO_ALL
 };
 
 typedef struct {
@@ -36,15 +36,20 @@ static const char **gIndexPatterns;
 static unsigned gIndexPatternCount;
 
 
-/* non-zero when "index" option contains "."
- */
-static bool gIsDirectoryListingAllowed = true;
-
 /* List of shares, terminated with one with urlpath set to NULL
  */
 static Share *gShares;
 
-static enum AuthorizationOpt gAuthorizationOpt = AO_NONE;
+
+/* Available operations.
+ */
+static enum DirectoryOps gAvailOps = DO_ALL;
+
+
+/* Operations which may be performed by guest.
+ */
+static enum DirectoryOps gGuestOps = DO_ALL;
+
 static const char **gCredentials;
 
 
@@ -58,7 +63,6 @@ void config_parse(void)
 
     configFName = cmdline_getConfigFileName();
     if( (fp = fopen(configFName, "r")) != NULL ) {
-        gIsDirectoryListingAllowed = false;
         while( fgets(buf, sizeof(buf), fp) != NULL ) {
             ++lineNo;
             dch_InitWithStr(&dchValue, buf);
@@ -76,14 +80,10 @@ void config_parse(void)
                     ++shareCount;
                 }else if( dch_EqualsStr(&dchName, "index") ) {
                     while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
-                        if( dch_EqualsStr(&dchPatt, ".") )
-                            gIsDirectoryListingAllowed = true;
-                        else{
-                            gIndexPatterns = realloc(gIndexPatterns,
-                                (gIndexPatternCount+1) * sizeof(const char*));
-                            gIndexPatterns[gIndexPatternCount++] =
-                                dch_DupToStr(&dchPatt);
-                        }
+                        gIndexPatterns = realloc(gIndexPatterns,
+                            (gIndexPatternCount+1) * sizeof(const char*));
+                        gIndexPatterns[gIndexPatternCount++] =
+                            dch_DupToStr(&dchPatt);
                     }
                 }else if( dch_EqualsStr(&dchName, "port") ) {
                     if( ! dch_ToUInt(&dchValue, 0, &gListenPort) )
@@ -91,18 +91,30 @@ void config_parse(void)
                                 configFName, lineNo);
                 }else if( dch_EqualsStr(&dchName, "user") ) {
                     gSwitchUser = dch_DupToStr(&dchValue);
-                }else if( dch_EqualsStr(&dchName, "auth") ) {
-                    if( dch_EqualsStr(&dchValue, "none") ) {
-                        gAuthorizationOpt = AO_NONE;
-                    }else if( dch_EqualsStr(&dchValue, "modify") ) {
-                        gAuthorizationOpt = AO_MODIFY;
+                }else if( dch_EqualsStr(&dchName, "dirops") ) {
+                    if( dch_EqualsStr(&dchValue, "all") ) {
+                        gAvailOps = DO_ALL;
                     }else if( dch_EqualsStr(&dchValue, "listing") ) {
-                        gAuthorizationOpt = AO_LISTING;
+                        gAvailOps = DO_LISTING;
                     }else{
-                        if( ! dch_EqualsStr(&dchValue, "all") )
-                            fprintf(stderr, "%s:%d warning: wrong auth value; "
-                                    "assuming \"all\"\n", configFName, lineNo);
-                        gAuthorizationOpt = AO_ALL;
+                        if( ! dch_EqualsStr(&dchValue, "none") )
+                            fprintf(stderr, "%s:%d warning: bad dirops value; "
+                                    "assuming \"none\"\n", configFName, lineNo);
+                        gAvailOps = DO_NONE;
+                    }
+                }else if( dch_EqualsStr(&dchName, "guestops") ) {
+                    if( dch_EqualsStr(&dchValue, "all") ) {
+                        gGuestOps = DO_ALL;
+                    }else if( dch_EqualsStr(&dchValue, "listing") ) {
+                        gGuestOps = DO_LISTING;
+                    }else if( dch_EqualsStr(&dchValue, "file") ) {
+                        gGuestOps = DO_FILE;
+                    }else{
+                        if( ! dch_EqualsStr(&dchValue, "none") )
+                            fprintf(stderr, "%s:%d warning: bad guestops "
+                                    "value; assuming \"none\"\n",
+                                    configFName, lineNo);
+                        gGuestOps = DO_NONE;
                     }
                 }else if( dch_EqualsStr(&dchName, "credentials") ) {
                     gCredentials = realloc(gCredentials,
@@ -140,8 +152,6 @@ void config_parse(void)
     if( gListenPort == 0 ) {
         gListenPort = geteuid() == 0 ? 80 : 8000;
     }
-    if( gIndexPatternCount == 0 )
-        gIsDirectoryListingAllowed = true;
 }
 
 unsigned config_getListenPort(void)
@@ -330,18 +340,31 @@ bool config_isClientAuthorized(const char *authorization)
     return res;
 }
 
+bool config_isActionAvailable(enum PrivilegedAction pa)
+{
+    switch( pa ) {
+    case PA_SERVE_PAGE:
+        return true;
+        break;
+    case PA_LIST_FOLDER:
+        return gAvailOps != DO_NONE;
+    default:    /* PA_MODIFY */
+        break;
+    }
+    return gAvailOps == DO_ALL;
+}
+
 bool config_isActionAllowed(enum PrivilegedAction pa, bool isLoggedIn)
 {
-    if( pa != PA_SERVE_PAGE && ! gIsDirectoryListingAllowed )
+    if( ! config_isActionAvailable(pa) )
         return false;
-    if( isLoggedIn || gAuthorizationOpt == AO_NONE )
+    if( isLoggedIn || gGuestOps == DO_ALL )
         return true;
     switch( pa ) {
     case PA_SERVE_PAGE:
-        return gAuthorizationOpt == AO_LISTING ||
-            gAuthorizationOpt == AO_MODIFY;
+        return gGuestOps != DO_NONE;
     case PA_LIST_FOLDER:
-        return gAuthorizationOpt == AO_MODIFY;
+        return gGuestOps == DO_LISTING;
     default:    /* PA_MODIFY */
         break;
     }
@@ -350,6 +373,16 @@ bool config_isActionAllowed(enum PrivilegedAction pa, bool isLoggedIn)
 
 bool config_givesLoginMorePrivileges(void)
 {
-    return gAuthorizationOpt != AO_NONE;
+    switch( gGuestOps ) {
+    case DO_ALL:
+        return false;
+    case DO_LISTING:
+        return gAvailOps == DO_ALL;
+    case DO_FILE:
+        return gAvailOps != DO_NONE;
+    default:    /* DO_NONE */
+        break;
+    }
+    return true;
 }
 

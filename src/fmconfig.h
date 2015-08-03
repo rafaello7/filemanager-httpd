@@ -1,5 +1,5 @@
-#ifndef CONFIGFILE_H
-#define CONFIGFILE_H
+#ifndef FMCONFIG_H
+#define FMCONFIG_H
 
 #include "folder.h"
 
@@ -45,6 +45,11 @@ char *config_getIndexFile(const char *dir, int *sysErrNo);
 bool config_isClientAuthorized(const char *authorization);
 
 
+/* Returns true when the privileged action is set as "supported" in config.
+ */
+bool config_isActionAvailable(enum PrivilegedAction);
+
+
 /* Returns true when the privileged action is allowed.
  */
 bool config_isActionAllowed(enum PrivilegedAction, bool isLoggedIn);
@@ -55,4 +60,4 @@ bool config_isActionAllowed(enum PrivilegedAction, bool isLoggedIn);
  */
 bool config_givesLoginMorePrivileges(void);
 
-#endif /* CONFIGFILE_H */
+#endif /* FMCONFIG_H */

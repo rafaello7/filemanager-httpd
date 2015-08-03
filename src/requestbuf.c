@@ -65,6 +65,11 @@ const char *req_getHeaderVal(const RequestBuf *req, const char *headerName)
     return NULL;
 }
 
+bool req_isLoggedIn(const RequestBuf *req)
+{
+    return req->isLoggedIn;
+}
+
 bool req_isWorthPuttingLogOnButton(const RequestBuf *req)
 {
     return ! req->isLoggedIn && config_givesLoginMorePrivileges();

@@ -472,7 +472,7 @@ static const char *getContentTypeByFileExt(const char *fname)
     return res;
 }
 
-static RespBuf *send_file(const char *urlPath, const char *sysPath,
+static RespBuf *sendFile(const char *urlPath, const char *sysPath,
         bool onlyHead)
 {
     FILE *fp;
@@ -481,7 +481,7 @@ static RespBuf *send_file(const char *urlPath, const char *sysPath,
     RespBuf *resp;
 
     if( (fp = fopen(sysPath, "r")) != NULL ) {
-        dolog("send_file: opened %s", sysPath);
+        dolog("sendFile: opened %s", sysPath);
         resp = resp_new(HTTP_200_OK);
         resp_appendHeader(resp, "Content-Type",
                 getContentTypeByFileExt(sysPath));
@@ -689,28 +689,38 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
     return res;
 }
 
-static MemBuf *process_post(const char *sysPath, const char *ct,
-        const MemBuf *requestBody)
+static bool processPost(const RequestBuf *req, const char *sysPath,
+        char **errMsgBuf)
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
-    enum { RT_UNKNOWN, RT_UPLOAD, RT_RENAME, RT_NEWDIR, RT_DELETE, RT_LOGIN }
-        request_type = RT_UNKNOWN;
-    MemBuf *res = NULL;
+    enum {
+        RT_UNKNOWN,
+        RT_LOGIN,
+        RT_MODIFY_BEG,  /* begin of requests requiring PA_MODIFY */
+        RT_UPLOAD = RT_MODIFY_BEG,
+        RT_RENAME,
+        RT_NEWDIR,
+        RT_DELETE
+    } requestType = RT_UNKNOWN;
+    MemBuf *opErr = NULL;
+    const char *ct = req_getHeaderVal(req, "Content-Type");
+    const MemBuf *requestBody = req_getBody(req);
+    bool requireAuth = false;
 
     dch_Clear(&file_part.name);
     dch_Clear(&newdir_part.name);
     dch_Clear(&newname_part.name);
     if( mb_dataLen(requestBody) == 0 ) {
-        res = fmtError(0, "bad content length: 0", NULL);
+        opErr = fmtError(0, "bad content length: 0", NULL);
         goto err;
     }
     if( ct == NULL ) {
-        res = fmtError(0, "unspecified content type", NULL);
+        opErr = fmtError(0, "unspecified content type", NULL);
         goto err;
     }
     if( memcmp(ct, "multipart/form-data; boundary=", 30) ) {
-        res = fmtError(0, "bad content type: ", ct, NULL);
+        opErr = fmtError(0, "bad content type: ", ct, NULL);
         goto err;
     }
     ct += 30;
@@ -718,7 +728,7 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
     dch_Init(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
     /* skip first boundary */
     if( ! dch_ExtractTillStr2(&bodyData, &partData, "--", ct) ) {
-        res = fmtError(0, "malformed form data", NULL);
+        opErr = fmtError(0, "malformed form data", NULL);
         goto err;
     }
     /* check string after boundary; string after last boundary is "--\r\n" */
@@ -738,15 +748,15 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
                         part.name.len, part.name.data, part.data.len);
             */
             if( dch_EqualsStr(&part.name, "do_upload") ) {
-                request_type = RT_UPLOAD;
+                requestType = RT_UPLOAD;
             }else if( dch_EqualsStr(&part.name, "do_rename") ) {
-                request_type = RT_RENAME;
+                requestType = RT_RENAME;
             }else if( dch_EqualsStr(&part.name, "do_newdir") ) {
-                request_type = RT_NEWDIR;
+                requestType = RT_NEWDIR;
             }else if( dch_EqualsStr(&part.name, "do_delete") ) {
-                request_type = RT_DELETE;
+                requestType = RT_DELETE;
             }else if( dch_EqualsStr(&part.name, "do_login") ) {
-                request_type = RT_LOGIN;
+                requestType = RT_LOGIN;
             }else if( dch_EqualsStr(&part.name, "file") ) {
                 file_part = part;
             }else if( dch_EqualsStr(&part.name, "new_dir") ) {
@@ -755,130 +765,95 @@ static MemBuf *process_post(const char *sysPath, const char *ct,
                 newname_part = part;
             }
         }else{
-            res = fmtError(0, "malformed form data", NULL);
+            opErr = fmtError(0, "malformed form data", NULL);
             goto err;
         }
         if(  dch_StartsWithStr(&bodyData, "--\r\n") )
             break;
     }
-    switch( request_type ) {
-    case RT_UPLOAD:
-        res = upload_file(sysPath, &file_part.filename,
-                &file_part.data);
-        break;
-    case RT_RENAME:
-        res = rename_file(sysPath, &file_part.data,
-                &newdir_part.data, &newname_part.data);
-        break;
-    case RT_NEWDIR:
-        res = create_newdir(sysPath, &newdir_part.data);
-        break;
-    case RT_DELETE:
-        res = delete_file(sysPath, &file_part.data);
-        break;
-    case RT_LOGIN:
-        break;
-    default:
-        res = fmtError(0, "unrecognized request", NULL);
-        break;
-    }
-err:
-    return res;
-}
-
-static RespBuf *doProcessReqNormal(const RequestBuf *req)
-{
-    int sysErrNo = 0;
-    struct stat st;
-    const char *queryFile = req_getPath(req);
-    char *sysPath = config_getSysPathForUrlPath(queryFile);
-    bool isHeadReq;
-    Folder *folder = NULL;
-    int isFolder = 0;
-    RespBuf *resp = NULL;
-
-    isHeadReq = !strcmp(req_getMethod(req), "HEAD");
-    if( sysPath != NULL ) {
-        if( stat(sysPath, &st) == 0 )
-            isFolder = S_ISDIR(st.st_mode);
-        else
-            sysErrNo = errno;
-    }else{
-        if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
-            sysErrNo = ENOENT;
-        else
-            isFolder = 1;
-    }
-
-    if( sysErrNo == 0 && isFolder && queryFile[strlen(queryFile)-1] != '/' ) {
-        resp = printMovedAddSlash(queryFile, isHeadReq);
-    }else{
-        char *opErrorMsg = NULL;
-        if( sysErrNo == 0 ) {
-            if( !strcmp(req_getMethod(req), "POST") ) {
-                if( sysPath != NULL ) {
-                    MemBuf *opErrBuf = process_post(sysPath,
-                            req_getHeaderVal(req, "Content-Type"),
-                            req_getBody(req));
-                    if( opErrBuf != NULL ) {
-                        mb_appendData(opErrBuf, "", 1);
-                        opErrorMsg = mb_unbox_free(opErrBuf);
-                    }
-                }else{
-                    opErrorMsg = strdup("request not allowed here");
-                }
-            }
-            if( isFolder && folder == NULL ) {
-                char *indexFile = config_getIndexFile(sysPath, &sysErrNo);
-                if( indexFile != NULL ) {
-                    free(sysPath);
-                    sysPath = indexFile;
-                    isFolder = 0;
-                }else if( sysErrNo == 0 ) {
-                    if( req_isActionAllowed(req, PA_LIST_FOLDER) )
-                        folder = folder_loadDir(sysPath, &sysErrNo);
-                    else
-                        sysErrNo = ENOENT;
-                }
+    if( requestType == RT_LOGIN ) {
+        requireAuth = !req_isLoggedIn(req);
+    }else if( requestType >= RT_MODIFY_BEG &&
+            config_isActionAvailable(PA_MODIFY) )
+    {
+        requireAuth = req_isActionAllowed(req, PA_MODIFY);
+        if( ! requireAuth ) {
+            switch( requestType ) {
+            case RT_UPLOAD:
+                opErr = upload_file(sysPath, &file_part.filename,
+                        &file_part.data);
+                break;
+            case RT_RENAME:
+                opErr = rename_file(sysPath, &file_part.data,
+                        &newdir_part.data, &newname_part.data);
+                break;
+            case RT_NEWDIR:
+                opErr = create_newdir(sysPath, &newdir_part.data);
+                break;
+            case RT_DELETE:
+                opErr = delete_file(sysPath, &file_part.data);
+                break;
+            default:
+                break;
             }
         }
-        if( sysErrNo == 0 ) {
-            if( isFolder ) {
-                bool isModifiable = sysPath == NULL ? 0 :
-                    req_isActionAllowed(req, PA_MODIFY) &&
-                        access(sysPath, W_OK) == 0;
+    }else
+        opErr = fmtError(0, "unrecognized request", NULL);
+err:
+    if( opErr != NULL ) {
+        mb_appendData(opErr, "", 1);
+        *errMsgBuf = mb_unbox_free(opErr);
+    }
+    return requireAuth;
+}
+
+static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
+        Folder *folder)
+{
+    char *opErrorMsg = NULL;
+    const char *queryFile = req_getPath(req);
+    RespBuf *resp;
+    bool isHeadReq = !strcmp(req_getMethod(req), "HEAD");
+    int sysErrNo;
+
+    if( !strcmp(req_getMethod(req), "POST") &&
+                processPost(req, sysPath, &opErrorMsg) )
+    {
+        resp = printUnauthorized(queryFile, isHeadReq);
+    }else{
+        if( req_isActionAllowed(req, PA_LIST_FOLDER) ) {
+            bool isModifiable = sysPath == NULL ? 0 :
+                req_isActionAllowed(req, PA_MODIFY) &&
+                    access(sysPath, W_OK) == 0;
+            if( folder == NULL )
+                folder = folder_loadDir(sysPath, &sysErrNo);
+            if( sysErrNo == 0 ) {
                 resp = printFolderContents(queryFile, folder, isModifiable,
                         req_isWorthPuttingLogOnButton(req),
                         opErrorMsg, isHeadReq);
-            }else if( opErrorMsg == NULL ) {
-                resp = send_file(queryFile, sysPath, isHeadReq);
             }else{
-                resp = printMesgPage(HTTP_200_OK, opErrorMsg,
-                        queryFile, isHeadReq, false);
+                resp = printErrorPage(ENOENT, queryFile, isHeadReq, false);
             }
         }else{
-            resp = printErrorPage(sysErrNo, queryFile, isHeadReq,
+            resp = printErrorPage(ENOENT, queryFile, isHeadReq,
                     req_isWorthPuttingLogOnButton(req));
         }
-        free(opErrorMsg);
     }
-    folder_free(folder);
-    free(sysPath);
+    free(opErrorMsg);
     return resp;
 }
 
 RespBuf *filemgr_processRequest(const RequestBuf *req)
 {
-    unsigned queryFileLen, isHeadReq, isPostReq;
+    unsigned queryFileLen, isHeadReq;
     const char *queryFile;
     RespBuf *resp;
 
     isHeadReq = !strcmp(req_getMethod(req), "HEAD");
-    isPostReq = !strcmp(req_getMethod(req), "POST");
     queryFile = req_getPath(req);
     queryFileLen = strlen(queryFile);
     dolog("got: %s %s\n", req_getMethod(req), queryFile);
-    if( ! req_isActionAllowed(req, isPostReq ? PA_MODIFY : PA_SERVE_PAGE) ) {
+    if( ! req_isActionAllowed(req, PA_SERVE_PAGE) ) {
         resp = printUnauthorized(req_getPath(req), isHeadReq);
     }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
@@ -886,7 +861,47 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
         resp = printMesgPage(HTTP_403_FORBIDDEN, NULL, queryFile,
                 isHeadReq, false);
     }else{
-        resp = doProcessReqNormal(req);
+        int sysErrNo = 0;
+        struct stat st;
+        char *sysPath = config_getSysPathForUrlPath(queryFile), *indexFile;
+        Folder *folder = NULL;
+        bool isFolder = false;
+
+        if( sysPath != NULL ) {
+            if( stat(sysPath, &st) == 0 )
+                isFolder = S_ISDIR(st.st_mode);
+            else
+                sysErrNo = errno;
+        }else{
+            if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
+                sysErrNo = ENOENT;
+            else
+                isFolder = true;
+        }
+
+        if( sysErrNo == 0 && isFolder && queryFile[strlen(queryFile)-1] != '/')
+        {
+            resp = printMovedAddSlash(queryFile, isHeadReq);
+        }else{
+            if( sysErrNo == 0 && isFolder && folder == NULL &&
+                (indexFile = config_getIndexFile(sysPath, &sysErrNo)) != NULL )
+            {
+                free(sysPath);
+                sysPath = indexFile;
+                isFolder = false;
+            }
+            if( sysErrNo == 0 ) {
+                if( isFolder ) {
+                    resp = processFolderReq(req, sysPath, folder);
+                }else{
+                    resp = sendFile(queryFile, sysPath, isHeadReq);
+                }
+            }else{
+                resp = printErrorPage(sysErrNo, queryFile, isHeadReq, false);
+            }
+        }
+        folder_free(folder);
+        free(sysPath);
     }
     return resp;
 }
