@@ -5,7 +5,7 @@
 bool cmdline_parse(int argc, char *argv[]);
 
 
-const char *cmdline_getConfigFileName(void);
+const char *cmdline_getConfigLoc(void);
 
 
 #endif /* CMDLINE_H */

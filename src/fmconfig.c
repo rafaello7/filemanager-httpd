@@ -53,15 +53,13 @@ static enum DirectoryOps gGuestOps = DO_ALL;
 static const char **gCredentials;
 
 
-void config_parse(void)
+void parseFile(const char *configFName, int *shareCount, int *credentialCount)
 {
-    const char *configFName;
     FILE *fp;
     char buf[1024];
     DataChunk dchName, dchValue, dchPatt;
-    int shareCount = 0, lineNo = 0, credentialCount = 0;
+    int lineNo = 0;
 
-    configFName = cmdline_getConfigFileName();
     if( (fp = fopen(configFName, "r")) != NULL ) {
         while( fgets(buf, sizeof(buf), fp) != NULL ) {
             ++lineNo;
@@ -72,12 +70,12 @@ void config_parse(void)
             if( dch_ExtractTillStrStripWS(&dchValue, &dchName, "=") ) {
                 if( dch_StartsWithStr(&dchName, "/") ) {
                     gShares = realloc(gShares,
-                            (shareCount+1) * sizeof(Share));
+                            (*shareCount+1) * sizeof(Share));
                     dch_TrimTrailing(&dchName, "/");
-                    gShares[shareCount].urlpath = dch_DupToStr(&dchName);
+                    gShares[*shareCount].urlpath = dch_DupToStr(&dchName);
                     dch_TrimTrailing(&dchValue, "/");
-                    gShares[shareCount].syspath = dch_DupToStr(&dchValue);
-                    ++shareCount;
+                    gShares[*shareCount].syspath = dch_DupToStr(&dchValue);
+                    ++*shareCount;
                 }else if( dch_EqualsStr(&dchName, "index") ) {
                     while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
                         gIndexPatterns = realloc(gIndexPatterns,
@@ -118,9 +116,9 @@ void config_parse(void)
                     }
                 }else if( dch_EqualsStr(&dchName, "credentials") ) {
                     gCredentials = realloc(gCredentials,
-                            (credentialCount+1) * sizeof(char*));
-                    gCredentials[credentialCount] = dch_DupToStr(&dchValue);
-                    ++credentialCount;
+                            (*credentialCount+1) * sizeof(char*));
+                    gCredentials[*credentialCount] = dch_DupToStr(&dchValue);
+                    ++*credentialCount;
                 }else{
                     fprintf(stderr, "%s:%d warning: unrecognized option "
                             "\"%.*s\", ignored\n", configFName, lineNo,
@@ -132,9 +130,36 @@ void config_parse(void)
             }
         }
     }else{
-        fprintf(stderr, "WARN: unable to open configuration file %s: %s\n",
+        fprintf(stderr, "WARN: unable to read configuration from %s: %s\n",
                 configFName, strerror(errno));
     }
+}
+
+void config_parse(void)
+{
+    int shareCount = 0, credentialCount = 0, sysErrNo, len, dirNameLen;
+    const char *configLoc = cmdline_getConfigLoc();
+    Folder *folder;
+    const FolderEntry *fe;
+
+    if( (folder = folder_loadDir(configLoc, &sysErrNo)) != NULL ) {
+        MemBuf *filePathName = mb_new();
+        mb_appendStr(filePathName, configLoc);
+        if( ! mb_endsWithStr(filePathName, "/") )
+            mb_appendStr(filePathName, "/");
+        dirNameLen = mb_dataLen(filePathName);
+        for(fe = folder_getEntries(folder); fe->fileName != NULL; ++fe) {
+            if( fe->isDir )
+                continue;
+            len = strlen(fe->fileName);
+            if( len >= 5 && !strcmp(fe->fileName + len - 5, ".conf") ) {
+                mb_setStrZEnd(filePathName, dirNameLen, fe->fileName);
+                parseFile(mb_data(filePathName), &shareCount, &credentialCount);
+            }
+        }
+        mb_free(filePathName);
+    }else
+        parseFile(configLoc, &shareCount, &credentialCount);
     if( shareCount == 0 ) {
         gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
         gShares[shareCount].urlpath = "";
@@ -257,7 +282,7 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
     if( (d = opendir(dir)) != NULL ) {
         MemBuf *filePathName = mb_new();
         mb_appendStr(filePathName, dir);
-        if( dir[mb_dataLen(filePathName)-1] != '/' )
+        if( ! mb_endsWithStr(filePathName, "/") )
             mb_appendStr(filePathName, "/");
         dirNameLen = mb_dataLen(filePathName);
         while( bestMatchIdx > 0 && (dp = readdir(d)) != NULL ) {
@@ -269,13 +294,11 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
                     break;
             }
             if( matchIdx < bestMatchIdx ) {
-                mb_setDataExtend(filePathName, dirNameLen, dp->d_name,
-                        strlen(dp->d_name) + 1);
+                mb_setStrZEnd(filePathName, dirNameLen, dp->d_name);
                 if( stat(mb_data(filePathName), &st) == 0 &&
                         ! S_ISDIR(st.st_mode) )
                 {
-                    mb_setDataExtend(bestIdxFile, 0, mb_data(filePathName),
-                            mb_dataLen(filePathName));
+                    mb_setStrZEnd(bestIdxFile, 0, mb_data(filePathName));
                 }
             }
         }

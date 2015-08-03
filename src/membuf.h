@@ -28,6 +28,9 @@ void mb_appendBuf(MemBuf*, const MemBuf*);
 void mb_appendStr(MemBuf*, const char*);
 
 
+bool mb_endsWithStr(const MemBuf*, const char*);
+
+
 /* Resizes the buffer. Current buffer contents is preserved.
  * New data is uninitialized.
  */
@@ -50,6 +53,14 @@ void mb_setData(MemBuf*, unsigned offset, const char *data, unsigned len);
  * The buffer size is extended when needed.
  */
 void mb_setDataExtend(MemBuf*, unsigned offset, const char *data, unsigned len);
+
+
+/* Copies the specified string with terminating '\0' character into buffer
+ * starting at the specified offset. The buffer is truncated after the '\0'
+ * character.
+ * Offset shall be less than or equal to buffer length.
+ */
+void mb_setStrZEnd(MemBuf*, unsigned offset, const char *str);
 
 
 /* Returns length of buffer

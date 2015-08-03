@@ -1,6 +1,8 @@
 SUBDIRS	= src debian
 
-dist_sysconf_DATA = filemanager-httpd.conf
+pkgsysconfdir = $(sysconfdir)/filemanager-httpd.d
+
+dist_pkgsysconf_DATA = default.conf
 
 deb: dist
 	rm -rf dpkg-deb

@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include "membuf.h"
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,13 @@ void mb_appendStr(MemBuf *mb, const char *str)
     mb_appendData(mb, str, strlen(str));
 }
 
+bool mb_endsWithStr(const MemBuf *mb, const char *str)
+{
+    int len = strlen(str);
+
+    return mb->dataLen >= len && !memcmp(mb->data + mb->dataLen-len, str, len);
+}
+
 void mb_resize(MemBuf *mb, unsigned newSize)
 {
     if( newSize == 0 ) {
@@ -69,6 +77,15 @@ void mb_setDataExtend(MemBuf *mb, unsigned offset, const char *data,
         mb->data = realloc(mb->data, mb->dataLen);
     }
     memcpy(mb->data + offset, data, len);
+}
+
+void mb_setStrZEnd(MemBuf *mb, unsigned offset, const char *str)
+{
+    int len = strlen(str) + 1;
+
+    mb->dataLen = offset + len;
+    mb->data = realloc(mb->data, mb->dataLen);
+    memcpy(mb->data + offset, str, len);
 }
 
 unsigned mb_dataLen(const MemBuf *mb)

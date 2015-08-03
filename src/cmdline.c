@@ -3,14 +3,21 @@
 #include <unistd.h>
 #include <stdio.h>
 
-static const char *gConfigFileName = "/etc/filemanager-httpd.conf";
+static const char *gConfigLoc = "/etc/filemanager-httpd.d";
 
 static void usage(void)
 {
     printf(
-        "\n"
-        "usage: filemanager-httpd [-h] [-c configfile]\n"
-        "\n");
+    "\n"
+    "usage: filemanager-httpd [OPTIONS]\n"
+    "\n"
+    "options:\n"
+    "\t-h             - prints this help\n"
+    "\t-c file|dir    - configuration file name or a directory containing the\n"
+    "\t                 configuration files. In case of a directory all files\n"
+    "\t                 within, with \".conf\" extenstion are read.\n"
+    "\n"
+    );
 }
 
 bool cmdline_parse(int argc, char *argv[])
@@ -20,7 +27,7 @@ bool cmdline_parse(int argc, char *argv[])
     while( (opt = getopt(argc, argv, "c:h")) != -1 ) {
         switch( opt ) {
         case 'c':
-            gConfigFileName = optarg;
+            gConfigLoc = optarg;
             break;
         default:
             usage();
@@ -30,8 +37,8 @@ bool cmdline_parse(int argc, char *argv[])
     return true;
 }
 
-const char *cmdline_getConfigFileName(void)
+const char *cmdline_getConfigLoc(void)
 {
-    return gConfigFileName;
+    return gConfigLoc;
 }
 
