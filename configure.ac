@@ -20,5 +20,5 @@ AC_FUNC_REALLOC
 AC_FUNC_STRCOLL
 AC_CHECK_FUNCS([gethostname memchr mkdir rmdir select socket strcasecmp strchr strcspn strdup strerror strncasecmp strrchr strspn strstr strtoul])
 
-AC_CONFIG_FILES([Makefile src/Makefile debian/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile conf.d/Makefile debian/Makefile])
 AC_OUTPUT
