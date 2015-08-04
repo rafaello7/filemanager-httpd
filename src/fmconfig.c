@@ -4,6 +4,7 @@
 #include "datachunk.h"
 #include "membuf.h"
 #include "md5calc.h"
+#include "auth.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -63,61 +64,61 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
     if( (fp = fopen(configFName, "r")) != NULL ) {
         while( fgets(buf, sizeof(buf), fp) != NULL ) {
             ++lineNo;
-            dch_InitWithStr(&dchValue, buf);
-            dch_TrimWS(&dchValue);
+            dch_initWithStr(&dchValue, buf);
+            dch_trimWS(&dchValue);
             if( dchValue.len == 0 || *dchValue.data == '#' )
                 continue;
-            if( dch_ExtractTillStrStripWS(&dchValue, &dchName, "=") ) {
-                if( dch_StartsWithStr(&dchName, "/") ) {
+            if( dch_extractTillStrStripWS(&dchValue, &dchName, "=") ) {
+                if( dch_startsWithStr(&dchName, "/") ) {
                     gShares = realloc(gShares,
                             (*shareCount+1) * sizeof(Share));
-                    dch_TrimTrailing(&dchName, "/");
-                    gShares[*shareCount].urlpath = dch_DupToStr(&dchName);
-                    dch_TrimTrailing(&dchValue, "/");
-                    gShares[*shareCount].syspath = dch_DupToStr(&dchValue);
+                    dch_trimTrailing(&dchName, "/");
+                    gShares[*shareCount].urlpath = dch_dupToStr(&dchName);
+                    dch_trimTrailing(&dchValue, "/");
+                    gShares[*shareCount].syspath = dch_dupToStr(&dchValue);
                     ++*shareCount;
-                }else if( dch_EqualsStr(&dchName, "index") ) {
-                    while( dch_ExtractTillWS(&dchValue, &dchPatt) ) {
+                }else if( dch_equalsStr(&dchName, "index") ) {
+                    while( dch_extractTillWS(&dchValue, &dchPatt) ) {
                         gIndexPatterns = realloc(gIndexPatterns,
                             (gIndexPatternCount+1) * sizeof(const char*));
                         gIndexPatterns[gIndexPatternCount++] =
-                            dch_DupToStr(&dchPatt);
+                            dch_dupToStr(&dchPatt);
                     }
-                }else if( dch_EqualsStr(&dchName, "port") ) {
-                    if( ! dch_ToUInt(&dchValue, 0, &gListenPort) )
+                }else if( dch_equalsStr(&dchName, "port") ) {
+                    if( ! dch_toUInt(&dchValue, 0, &gListenPort) )
                         fprintf(stderr, "%s:%d warning: unrecognized port",
                                 configFName, lineNo);
-                }else if( dch_EqualsStr(&dchName, "user") ) {
-                    gSwitchUser = dch_DupToStr(&dchValue);
-                }else if( dch_EqualsStr(&dchName, "dirops") ) {
-                    if( dch_EqualsStr(&dchValue, "all") ) {
+                }else if( dch_equalsStr(&dchName, "user") ) {
+                    gSwitchUser = dch_dupToStr(&dchValue);
+                }else if( dch_equalsStr(&dchName, "dirops") ) {
+                    if( dch_equalsStr(&dchValue, "all") ) {
                         gAvailOps = DO_ALL;
-                    }else if( dch_EqualsStr(&dchValue, "listing") ) {
+                    }else if( dch_equalsStr(&dchValue, "listing") ) {
                         gAvailOps = DO_LISTING;
                     }else{
-                        if( ! dch_EqualsStr(&dchValue, "none") )
+                        if( ! dch_equalsStr(&dchValue, "none") )
                             fprintf(stderr, "%s:%d warning: bad dirops value; "
                                     "assuming \"none\"\n", configFName, lineNo);
                         gAvailOps = DO_NONE;
                     }
-                }else if( dch_EqualsStr(&dchName, "guestops") ) {
-                    if( dch_EqualsStr(&dchValue, "all") ) {
+                }else if( dch_equalsStr(&dchName, "guestops") ) {
+                    if( dch_equalsStr(&dchValue, "all") ) {
                         gGuestOps = DO_ALL;
-                    }else if( dch_EqualsStr(&dchValue, "listing") ) {
+                    }else if( dch_equalsStr(&dchValue, "listing") ) {
                         gGuestOps = DO_LISTING;
-                    }else if( dch_EqualsStr(&dchValue, "file") ) {
+                    }else if( dch_equalsStr(&dchValue, "file") ) {
                         gGuestOps = DO_FILE;
                     }else{
-                        if( ! dch_EqualsStr(&dchValue, "none") )
+                        if( ! dch_equalsStr(&dchValue, "none") )
                             fprintf(stderr, "%s:%d warning: bad guestops "
                                     "value; assuming \"none\"\n",
                                     configFName, lineNo);
                         gGuestOps = DO_NONE;
                     }
-                }else if( dch_EqualsStr(&dchName, "credentials") ) {
+                }else if( dch_equalsStr(&dchName, "credentials") ) {
                     gCredentials = realloc(gCredentials,
                             (*credentialCount+1) * sizeof(char*));
-                    gCredentials[*credentialCount] = dch_DupToStr(&dchValue);
+                    gCredentials[*credentialCount] = dch_dupToStr(&dchValue);
                     ++*credentialCount;
                 }else{
                     fprintf(stderr, "%s:%d warning: unrecognized option "
@@ -253,15 +254,15 @@ Folder *config_getSubSharesForPath(const char *urlPath)
         if( !strncmp(urlPath, cur->urlpath, pathLen) &&
                 cur->urlpath[pathLen] == '/')
         {
-            dch_InitWithStr(&dchPath, cur->urlpath + pathLen + 1);
-            dch_SkipLeading(&dchPath, "/");
+            dch_initWithStr(&dchPath, cur->urlpath + pathLen + 1);
+            dch_skipLeading(&dchPath, "/");
             if( dchPath.len > 0 ) {
-                dch_ExtractTillStr(&dchPath, &ent, "/");
+                dch_extractTillStr(&dchPath, &ent, "/");
                 if( folder == NULL )
                     folder = folder_new();
                 /* avoid duplicates */
                 for(fe = folder_getEntries(folder); fe->fileName != NULL &&
-                        !dch_EqualsStr(&ent, fe->fileName); ++fe)
+                        !dch_equalsStr(&ent, fe->fileName); ++fe)
                     ;
                 if( fe->fileName == NULL )
                     folder_addEntryChunk(folder, &ent, 1, 0);
@@ -311,56 +312,54 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
     return mb_unbox_free(bestIdxFile);
 }
 
-static char *base64Decode(const char *s)
+bool config_getDigestAuthCredential(const char *userName, int userNameLen,
+        char *md5sum)
 {
-    static const unsigned char base64chars[] =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    static int base64values[128];
-    unsigned i, b = 0, bits = 0;
-    unsigned char c;
-    char *res = malloc(strlen(s) / 4 * 3 + 3), *dest = res;
+    const char **cred, *passwdBeg, *found = NULL;
+    bool res = false;
 
-    if( base64values['+'] == 0 ) {
-        for(i = 0; i < 128; ++i)
-            base64values[i] = -1;
-        for(i = 0; base64chars[i]; ++i)
-            base64values[base64chars[i]] = i;
-    }
-    while( (c = *s++) && c != '=' ) {
-        if( c < 128 && base64values[c] != -1 ) {
-            b = (b << 6) + base64values[c];
-            bits += 6;
-            if( bits >= 8 ) {
-                bits -= 8;
-                *dest++ = b >> bits & 0xff;
+    if( userNameLen == -1 )
+        userNameLen = strlen(userName);
+    if( gCredentials != NULL ) {
+        for(cred = gCredentials; *cred != NULL && found == NULL; ++cred) {
+            if( ! strncmp(*cred, userName, userNameLen) ) {
+                passwdBeg = *cred + userNameLen;
+                if( *passwdBeg == ':' || (strlen(passwdBeg) == 32 &&
+                        strchr(passwdBeg, ':') == NULL) )
+                    found = passwdBeg;
             }
         }
+        if( found != NULL ) {
+            if( *found == ':' ) {
+                MemBuf *mb = mb_new();
+                mb_appendData(mb, *cred, userNameLen + 1);
+                mb_appendStr(mb, FM_REALM);
+                mb_appendStr(mb, *cred + userNameLen);
+                md5_calculate(md5sum, mb_data(mb), mb_dataLen(mb));
+                mb_free(mb);
+            }else   /* already encoded */
+                strcpy(md5sum, found);
+            res = true;
+        }
     }
-    *dest = '\0';
     return res;
 }
 
-bool config_isClientAuthorized(const char *authorization)
+const char *config_getCredentialsEncoded(const char *userWithPasswd)
 {
-    char md5[40], *authDec;
-    const char **cred;
-    bool res;
+    static char *result;
+    unsigned userNameLen = strcspn(userWithPasswd, ":");
+    MemBuf *mb = mb_new();
 
-    if( gCredentials == NULL )
-        res = true;
-    else if( authorization == NULL || strncasecmp(authorization, "Basic ", 6) )
-        res = false;
-    else{
-        authDec = base64Decode(authorization+6);
-        md5_calculate(md5, authDec, strlen(authDec));
-        for(cred = gCredentials; *cred != NULL &&
-                strcmp(*cred, authDec) && strcmp(*cred, md5); ++cred)
-        {
-        }
-        free(authDec);
-        res = *cred != NULL;
-    }
-    return res;
+    mb_appendData(mb, userWithPasswd, userNameLen + 1);
+    mb_appendStr(mb, FM_REALM);
+    mb_appendStr(mb, userWithPasswd + userNameLen);
+    result = realloc(result, userNameLen + 33);
+    memcpy(result, userWithPasswd, userNameLen);
+    md5_calculate(result + userNameLen, mb_data(mb), mb_dataLen(mb));
+    mb_free(mb);
+
+    return result;
 }
 
 bool config_isActionAvailable(enum PrivilegedAction pa)

@@ -7,5 +7,6 @@ bool cmdline_parse(int argc, char *argv[]);
 
 const char *cmdline_getConfigLoc(void);
 
+unsigned cmdline_getLogLevel(void);
 
 #endif /* CMDLINE_H */

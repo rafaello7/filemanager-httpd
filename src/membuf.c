@@ -36,6 +36,26 @@ void mb_appendStr(MemBuf *mb, const char *str)
     mb_appendData(mb, str, strlen(str));
 }
 
+void mb_appendStrL(MemBuf *mb, const char *str1, const char *str2, ...)
+{
+    va_list args;
+
+    mb_appendStr(mb, str1);
+    if( str2 != NULL ) {
+        va_start(args, str2);
+        while( str2 != NULL ) {
+            mb_appendStr(mb, str2);
+            str2 = va_arg(args, const char*);
+        }
+        va_end(args);
+    }
+}
+
+void mb_appendChunk(MemBuf *mb, const DataChunk *dch)
+{
+    mb_appendData(mb, dch->data, dch->len);
+}
+
 bool mb_endsWithStr(const MemBuf *mb, const char *str)
 {
     int len = strlen(str);

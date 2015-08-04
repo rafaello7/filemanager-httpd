@@ -37,7 +37,7 @@ void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
                 (folder->entryAlloc+1) * sizeof(FolderEntry));
     }
     fe = folder->entries + folder->entryCount;
-    fe->fileName = dch_DupToStr(name);
+    fe->fileName = dch_dupToStr(name);
     fe->isDir = isDir;
     fe->size = size;
     fe[1].fileName = NULL;
@@ -49,7 +49,7 @@ void folder_addEntry(Folder *folder, const char *name, bool isDir,
 {
     DataChunk dch;
 
-    dch_Init(&dch, name, strlen(name));
+    dch_init(&dch, name, strlen(name));
     folder_addEntryChunk(folder, &dch, isDir, size);
 }
 

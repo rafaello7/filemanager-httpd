@@ -25,25 +25,25 @@ static bool indexOfStr(const DataChunk *dch, const char *str,
     return false;
 }
 
-void dch_Clear(DataChunk *dch)
+void dch_clear(DataChunk *dch)
 {
     dch->data = NULL;
     dch->len = 0;
 }
 
-void dch_Init(DataChunk *dch, const char *data, unsigned len)
+void dch_init(DataChunk *dch, const char *data, unsigned len)
 {
     dch->data = data;
     dch->len = len;
 }
 
-void dch_InitWithStr(DataChunk *dch, const char *str)
+void dch_initWithStr(DataChunk *dch, const char *str)
 {
     dch->data = str;
-    dch->len = strlen(str);
+    dch->len = str ? strlen(str) : 0;
 }
 
-bool dch_Shift(DataChunk *dch, unsigned size)
+bool dch_shift(DataChunk *dch, unsigned size)
 {
     if( dch->len < size )
         return false;
@@ -52,7 +52,7 @@ bool dch_Shift(DataChunk *dch, unsigned size)
     return true;
 }
 
-bool dch_ShiftAfterChr(DataChunk *dch, char c)
+bool dch_shiftAfterChr(DataChunk *dch, char c)
 {
     const char *dataEnd = memchr(dch->data, c, dch->len);
 
@@ -63,7 +63,7 @@ bool dch_ShiftAfterChr(DataChunk *dch, char c)
     return true;
 }
 
-bool dch_ShiftAfterStr(DataChunk *dch, const char *str)
+bool dch_shiftAfterStr(DataChunk *dch, const char *str)
 {
     int idxEnd;
 
@@ -74,7 +74,7 @@ bool dch_ShiftAfterStr(DataChunk *dch, const char *str)
     return true;
 }
 
-void dch_SkipLeading(DataChunk *dch, const char *str)
+void dch_skipLeading(DataChunk *dch, const char *str)
 {
     while( dch->len > 0 && *dch->data && strchr(str, *dch->data) ) {
         ++dch->data;
@@ -82,20 +82,20 @@ void dch_SkipLeading(DataChunk *dch, const char *str)
     }
 }
 
-void dch_TrimTrailing(DataChunk *dch, const char *str)
+void dch_trimTrailing(DataChunk *dch, const char *str)
 {
     while( dch->len > 0 && dch->data[dch->len-1] &&
             strchr(str, dch->data[dch->len-1]) )
         --dch->len;
 }
 
-void dch_TrimWS(DataChunk *dch)
+void dch_trimWS(DataChunk *dch)
 {
-    dch_SkipLeading(dch, gWhiteSpaces);
-    dch_TrimTrailing(dch, gWhiteSpaces);
+    dch_skipLeading(dch, gWhiteSpaces);
+    dch_trimTrailing(dch, gWhiteSpaces);
 }
 
-bool dch_ExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
+bool dch_extractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
 {
     int idxBeg, idxEnd;
 
@@ -107,11 +107,11 @@ bool dch_ExtractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
         return true;
     }
     *subChunk = *dch;
-    dch_Clear(dch);
+    dch_clear(dch);
     return false;
 }
 
-bool dch_ExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
+bool dch_extractTillStr2(DataChunk *dch, DataChunk *subChunk,
         const char *str1, const char *str2)
 {
     int idxBeg, idxEnd, len1 = strlen(str1);
@@ -128,30 +128,30 @@ bool dch_ExtractTillStr2(DataChunk *dch, DataChunk *subChunk,
                 dch->len = dch2.len - idxEnd;
                 return true;
             }
-            if( ! dch_Shift(&dch2, idxBeg+1) )
+            if( ! dch_shift(&dch2, idxBeg+1) )
                 break;
         }
     }
     *subChunk = *dch;
-    dch_Clear(dch);
+    dch_clear(dch);
     return false;
 }
 
-bool dch_ExtractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
+bool dch_extractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
         const char *str)
 {
-    bool res = dch_ExtractTillStr(dch, subChunk, str);
+    bool res = dch_extractTillStr(dch, subChunk, str);
 
     if( res ) {
-        dch_SkipLeading(dch, gWhiteSpaces);
-        dch_TrimTrailing(subChunk, gWhiteSpaces);
+        dch_skipLeading(dch, gWhiteSpaces);
+        dch_trimTrailing(subChunk, gWhiteSpaces);
     }
     return res;
 }
 
-bool dch_ExtractTillWS(DataChunk *dch, DataChunk *subChunk)
+bool dch_extractTillWS(DataChunk *dch, DataChunk *subChunk)
 {
-    dch_SkipLeading(dch, gWhiteSpaces);
+    dch_skipLeading(dch, gWhiteSpaces);
     if( dch->len > 0 ) {
         subChunk->data = dch->data;
         while( dch->len > 0 &&
@@ -161,35 +161,49 @@ bool dch_ExtractTillWS(DataChunk *dch, DataChunk *subChunk)
             --dch->len;
         }
         subChunk->len = dch->data - subChunk->data;
-        dch_SkipLeading(dch, gWhiteSpaces);
+        dch_skipLeading(dch, gWhiteSpaces);
         return true;
     }
-    dch_Clear(subChunk);
+    dch_clear(subChunk);
     return false;
 }
 
-bool dch_EqualsStr(const DataChunk *dch, const char *str)
+bool dch_equalsStr(const DataChunk *dch, const char *str)
 {
     int len = strlen(str);
 
     return dch->len == len && !memcmp(dch->data, str, len);
 }
 
-bool dch_StartsWithStr(const DataChunk *dch, const char *str)
+bool dch_equalsStrIgnoreCase(const DataChunk *dch, const char *str)
+{
+    int len = strlen(str);
+
+    return dch->len == len && !strncasecmp(dch->data, str, len);
+}
+
+bool dch_startsWithStr(const DataChunk *dch, const char *str)
 {
     int len = strlen(str);
 
     return dch->len >= len && !memcmp(dch->data, str, len);
 }
 
-int dch_IndexOfStr(const DataChunk *dch, const char *str)
+bool dch_startsWithStrIgnoreCase(const DataChunk *dch, const char *str)
+{
+    int len = strlen(str);
+
+    return dch->len >= len && !strncasecmp(dch->data, str, len);
+}
+
+int dch_indexOfStr(const DataChunk *dch, const char *str)
 {
     int idxBeg;
 
     return indexOfStr(dch, str, &idxBeg, NULL) ? idxBeg : -1;
 }
 
-char *dch_DupToStr(const DataChunk *dch)
+char *dch_dupToStr(const DataChunk *dch)
 {
     char *res = malloc(dch->len + 1);
     memcpy(res, dch->data, dch->len);
@@ -197,14 +211,14 @@ char *dch_DupToStr(const DataChunk *dch)
     return res;
 }
 
-bool dch_ToUInt(const DataChunk *dch, int base, unsigned *result)
+bool dch_toUInt(const DataChunk *dch, int base, unsigned *result)
 {
     char *cpy, *endptr;
     bool ret = false;
     unsigned res;
    
     if( dch->len > 0 ) {
-        cpy = dch_DupToStr(dch);
+        cpy = dch_dupToStr(dch);
         res = strtoul(cpy, &endptr, base);
         if( endptr != cpy ) {
             *result = res;

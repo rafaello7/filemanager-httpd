@@ -1,6 +1,9 @@
 #include <stdbool.h>
 #include "requestbuf.h"
 #include "membuf.h"
+#include "auth.h"
+#include "fmlog.h"
+#include "cmdline.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -22,7 +25,7 @@ struct RequestBuf {
     char *chunkHdr;
     MemBuf *body;
     unsigned bodyReadLen;
-    bool isLoggedIn;
+    enum LoginState loginState;
 };
 
 RequestBuf *req_new(void)
@@ -65,19 +68,20 @@ const char *req_getHeaderVal(const RequestBuf *req, const char *headerName)
     return NULL;
 }
 
-bool req_isLoggedIn(const RequestBuf *req)
+enum LoginState req_getLoginState(const RequestBuf *req)
 {
-    return req->isLoggedIn;
+    return req->loginState;
 }
 
 bool req_isWorthPuttingLogOnButton(const RequestBuf *req)
 {
-    return ! req->isLoggedIn && config_givesLoginMorePrivileges();
+    return req->loginState == LS_LOGGED_OUT &&
+        config_givesLoginMorePrivileges();
 }
 
 bool req_isActionAllowed(const RequestBuf *req, enum PrivilegedAction pa)
 {
-    return config_isActionAllowed(pa, req->isLoggedIn);
+    return config_isActionAllowed(pa, req->loginState == LS_LOGGED_IN);
 }
 
 const MemBuf *req_getBody(const RequestBuf *req)
@@ -230,7 +234,7 @@ static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
 
 int req_appendData(RequestBuf *req, const char *data, unsigned len)
 {
-    int offset = 0;
+    int i, offset = 0;
 
     if( req->rrs == RRS_READ_HEAD ) {
         offset = appendHeaderData(req, data, len);
@@ -252,9 +256,19 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
     }
     if( req->rrs == RRS_READ_FINISHED ) {
         const char *auth = req_getHeaderVal(req, "Authorization");
-        req->isLoggedIn = config_isClientAuthorized(auth);
-        if( auth && ! req->isLoggedIn )
-            sleep(2); /* make dictionary attack harder */
+        log_debug("request: %s %s", req->request, req->path);
+        if( cmdline_getLogLevel() > 1 ) {
+            for(i = 0; i < req->headerCount; ++i)
+                log_debug("%s", req->headers[i]);
+        }else if( auth )
+            log_debug("Authorization: %s", auth);
+        if( auth == NULL )
+            req->loginState = LS_LOGGED_OUT;
+        else{
+            req->loginState =
+                auth_isClientAuthorized(auth, req_getMethod(req)) ?
+                    LS_LOGGED_IN : LS_LOGIN_FAIL;
+        }
     }
     return req->rrs == RRS_READ_FINISHED ? offset : -1;
 }

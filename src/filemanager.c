@@ -11,23 +11,8 @@
 #include "fmconfig.h"
 #include "datachunk.h"
 #include "folder.h"
-
-/*#define DEBUG*/
-
-#ifdef DEBUG
-static void dolog(const char *fmt, ...)
-{
-    va_list args;
-
-    va_start(args, fmt);
-    vfprintf(stdout, fmt, args);
-    va_end(args);
-    printf("\n");
-    fflush(stdout);
-}
-#else
-#define dolog(...)
-#endif
+#include "auth.h"
+#include "fmlog.h"
 
 
 static char *format_path(const char *rootdir, const char *subdir)
@@ -252,13 +237,13 @@ static RespBuf *printErrorPage(int sysErrno, const char *path,
 
 static RespBuf *printUnauthorized(const char *urlPath, bool onlyHead)
 {
-    char hostname[HOST_NAME_MAX], authHeader[HOST_NAME_MAX+50];
+    char *authHeader;
     RespBuf *resp;
 
     resp = printMesgPage(HTTP_401_UNAUTHORIZED, NULL, urlPath, onlyHead, false);
-    gethostname(hostname, sizeof(hostname));
-    sprintf(authHeader, "Basic realm=\"Logon to %s\"", hostname);
+    authHeader = auth_getAuthResponseHeader();
     resp_appendHeader(resp, "WWW-Authenticate", authHeader);
+    free(authHeader);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     return resp;
 }
@@ -468,7 +453,7 @@ static const char *getContentTypeByFileExt(const char *fname)
     }
     if( res == NULL )
         res = "application/octet-stream";
-    dolog("getContentTypeByFileExt: ext=%s, mime=%s\n", ext, res);
+    log_debug("ext=%s, mime=%s", ext, res);
     return res;
 }
 
@@ -481,7 +466,7 @@ static RespBuf *sendFile(const char *urlPath, const char *sysPath,
     RespBuf *resp;
 
     if( (fp = fopen(sysPath, "r")) != NULL ) {
-        dolog("sendFile: opened %s", sysPath);
+        log_debug("opened %s", sysPath);
         resp = resp_new(HTTP_200_OK);
         resp_appendHeader(resp, "Content-Type",
                 getContentTypeByFileExt(sysPath));
@@ -511,37 +496,37 @@ static int parse_part(const DataChunk *part, struct content_part *res)
     DataChunk contentDisp, name, value;
 
     res->data = *part;
-    dch_Clear(&contentDisp);
-    while( res->data.len >= 2 && ! dch_StartsWithStr(&res->data, "\r\n") ) {
-        if( dch_StartsWithStr(&res->data, "Content-Disposition:") ) {
-            if( ! dch_ExtractTillStr(&res->data, &contentDisp, "\r\n") )
+    dch_clear(&contentDisp);
+    while( res->data.len >= 2 && ! dch_startsWithStr(&res->data, "\r\n") ) {
+        if( dch_startsWithStr(&res->data, "Content-Disposition:") ) {
+            if( ! dch_extractTillStr(&res->data, &contentDisp, "\r\n") )
                 return 0;
         }else{
-            if( ! dch_ShiftAfterStr(&res->data, "\r\n") )
+            if( ! dch_shiftAfterStr(&res->data, "\r\n") )
                 return 0;
         }
     }
-    if( ! dch_Shift(&res->data, 2) )
+    if( ! dch_shift(&res->data, 2) )
         return 0;
     if( contentDisp.data == NULL ) {
-        dolog("no Content-Disposition in part");
+        log_debug("no Content-Disposition in part");
         return 0;
     }
     /* Content-Disposition: form-data; name="file"; filename="Test.xml" */
-    dch_Clear(&res->name);
-    dch_Clear(&res->filename);
-    while( dch_ShiftAfterChr(&contentDisp, ';') ) {
-        dch_SkipLeading(&contentDisp, " ");
-        if( ! dch_ExtractTillStr(&contentDisp, &name, "=") )
+    dch_clear(&res->name);
+    dch_clear(&res->filename);
+    while( dch_shiftAfterChr(&contentDisp, ';') ) {
+        dch_skipLeading(&contentDisp, " ");
+        if( ! dch_extractTillStr(&contentDisp, &name, "=") )
             return 0;
-        if( ! dch_StartsWithStr(&contentDisp, "\"") )
+        if( ! dch_startsWithStr(&contentDisp, "\"") )
             return 0;
-        dch_Shift(&contentDisp, 1);
-        if( ! dch_ExtractTillStr(&contentDisp, &value, "\"") )
+        dch_shift(&contentDisp, 1);
+        if( ! dch_extractTillStr(&contentDisp, &value, "\"") )
             return 0;
-        if( dch_EqualsStr(&name, "name") ) {
+        if( dch_equalsStr(&name, "name") ) {
             res->name = value;
-        }else if( dch_EqualsStr(&name, "filename") ) {
+        }else if( dch_equalsStr(&name, "filename") ) {
             res->filename = value;
         }
     }
@@ -578,9 +563,9 @@ static MemBuf *upload_file(const char *sysPath, const DataChunk *dchfname,
     char *fname, *fname_real;
     MemBuf *res = NULL;
 
-    fname = dch_DupToStr(dchfname);
-    dolog("upload_file: adding file=%s len=%u\n", fname, data->len);
-    if( dch_EqualsStr(dchfname, "") ) {
+    fname = dch_dupToStr(dchfname);
+    log_debug("upload_file: adding file=%s len=%u\n", fname, data->len);
+    if( dch_equalsStr(dchfname, "") ) {
         res = fmtError(0, "unable to add file with empty name", NULL);
     }else{
         fname_real = format_path(sysPath, fname);
@@ -614,13 +599,13 @@ static MemBuf *rename_file(const char *sysPath, const DataChunk *dch_old_name,
     {
         res = fmtError(0, "not all parameters provided for rename", NULL);
     }else{
-        old_name = dch_DupToStr(dch_old_name);
-        new_dir = dch_DupToStr(dch_new_dir);
-        new_name = dch_DupToStr(dch_new_name);
+        old_name = dch_dupToStr(dch_old_name);
+        new_dir = dch_dupToStr(dch_new_dir);
+        new_name = dch_dupToStr(dch_new_name);
         oldpath = format_path(sysPath, old_name);
         newUrlPath = format_path(new_dir, new_name);
         newSysPath = config_getSysPathForUrlPath(newUrlPath);
-        dolog("rename_file: %s -> %s", oldpath, newSysPath);
+        log_debug("rename_file: %s -> %s", oldpath, newSysPath);
         if( rename(oldpath, newSysPath) != 0 ) {
             res = fmtError(errno, old_name, " rename failed", NULL);
         }
@@ -641,13 +626,13 @@ static MemBuf *create_newdir(const char *sysPath, const DataChunk *dchNewDir)
 
     if( dchNewDir->len == 0 || dchNewDir->data[0] == '\0' ) {
         res = fmtError(0, "unable to create directory with empty name", NULL);
-    }else if( dch_IndexOfStr(dchNewDir, "/") >= 0 ) {
+    }else if( dch_indexOfStr(dchNewDir, "/") >= 0 ) {
         res = fmtError(0, "directory name cannot contain slashes"
                 "&emsp;&ndash;&emsp;\"/\"", NULL);
     }else{
-        newDir = dch_DupToStr(dchNewDir);
+        newDir = dch_dupToStr(dchNewDir);
         path = format_path(sysPath, newDir);
-        dolog("create dir: %s", path);
+        log_debug("create dir: %s", path);
         if( mkdir(path, S_IRWXU|S_IRWXG|S_IRWXO) != 0 ) {
             res = fmtError(errno, "unable to create directory \"", newDir,
                     "\"", NULL);
@@ -668,9 +653,9 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
     if( dch_fname->len == 0 || dch_fname->data[0] == '\0' ) {
         res = fmtError(0, "unable to remove file with empty name", NULL);
     }else{
-        fname = dch_DupToStr(dch_fname);
+        fname = dch_dupToStr(dch_fname);
         path = format_path(sysPath, fname);
-        dolog("delete: %s", path);
+        log_debug("delete: %s", path);
         if( stat(path, &st) == 0 ) {
             if( S_ISDIR(st.st_mode) ) {
                 opRes = rmdir(path);
@@ -708,9 +693,9 @@ static bool processPost(const RequestBuf *req, const char *sysPath,
     const MemBuf *requestBody = req_getBody(req);
     bool requireAuth = false;
 
-    dch_Clear(&file_part.name);
-    dch_Clear(&newdir_part.name);
-    dch_Clear(&newname_part.name);
+    dch_clear(&file_part.name);
+    dch_clear(&newdir_part.name);
+    dch_clear(&newname_part.name);
     if( mb_dataLen(requestBody) == 0 ) {
         opErr = fmtError(0, "bad content length: 0", NULL);
         goto err;
@@ -724,55 +709,55 @@ static bool processPost(const RequestBuf *req, const char *sysPath,
         goto err;
     }
     ct += 30;
-    /*dolog("boundary: %s", ct);*/
-    dch_Init(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
+    /*log_debug("boundary: %s", ct);*/
+    dch_init(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
     /* skip first boundary */
-    if( ! dch_ExtractTillStr2(&bodyData, &partData, "--", ct) ) {
+    if( ! dch_extractTillStr2(&bodyData, &partData, "--", ct) ) {
         opErr = fmtError(0, "malformed form data", NULL);
         goto err;
     }
     /* check string after boundary; string after last boundary is "--\r\n" */
-    while( dch_StartsWithStr(&bodyData, "\r\n") ) {
-        dch_Shift(&bodyData, 2);
-        if( ! dch_ExtractTillStr2(&bodyData, &partData, "\r\n--", ct) )
+    while( dch_startsWithStr(&bodyData, "\r\n") ) {
+        dch_shift(&bodyData, 2);
+        if( ! dch_extractTillStr2(&bodyData, &partData, "\r\n--", ct) )
             break;
         if( parse_part(&partData, &part) ) {
             /*
             if( part.filename.data != NULL )
-                dolog("part: {name=%.*s, filename=%.*s, datalen=%u}",
+                log_debug("part: {name=%.*s, filename=%.*s, datalen=%u}",
                         part.name.len, part.name.data,
                         part.filename.len, part.filename.data,
                         part.data.len);
             else
-                dolog("part: {name=%.*s, datalen=%u}",
+                log_debug("part: {name=%.*s, datalen=%u}",
                         part.name.len, part.name.data, part.data.len);
             */
-            if( dch_EqualsStr(&part.name, "do_upload") ) {
+            if( dch_equalsStr(&part.name, "do_upload") ) {
                 requestType = RT_UPLOAD;
-            }else if( dch_EqualsStr(&part.name, "do_rename") ) {
+            }else if( dch_equalsStr(&part.name, "do_rename") ) {
                 requestType = RT_RENAME;
-            }else if( dch_EqualsStr(&part.name, "do_newdir") ) {
+            }else if( dch_equalsStr(&part.name, "do_newdir") ) {
                 requestType = RT_NEWDIR;
-            }else if( dch_EqualsStr(&part.name, "do_delete") ) {
+            }else if( dch_equalsStr(&part.name, "do_delete") ) {
                 requestType = RT_DELETE;
-            }else if( dch_EqualsStr(&part.name, "do_login") ) {
+            }else if( dch_equalsStr(&part.name, "do_login") ) {
                 requestType = RT_LOGIN;
-            }else if( dch_EqualsStr(&part.name, "file") ) {
+            }else if( dch_equalsStr(&part.name, "file") ) {
                 file_part = part;
-            }else if( dch_EqualsStr(&part.name, "new_dir") ) {
+            }else if( dch_equalsStr(&part.name, "new_dir") ) {
                 newdir_part = part;
-            }else if( dch_EqualsStr(&part.name, "new_name") ) {
+            }else if( dch_equalsStr(&part.name, "new_name") ) {
                 newname_part = part;
             }
         }else{
             opErr = fmtError(0, "malformed form data", NULL);
             goto err;
         }
-        if(  dch_StartsWithStr(&bodyData, "--\r\n") )
+        if(  dch_startsWithStr(&bodyData, "--\r\n") )
             break;
     }
     if( requestType == RT_LOGIN ) {
-        requireAuth = !req_isLoggedIn(req);
+        requireAuth = req_getLoginState(req) != LS_LOGGED_IN;
     }else if( requestType >= RT_MODIFY_BEG &&
             config_isActionAvailable(PA_MODIFY) )
     {
@@ -852,8 +837,13 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
     isHeadReq = !strcmp(req_getMethod(req), "HEAD");
     queryFile = req_getPath(req);
     queryFileLen = strlen(queryFile);
-    dolog("got: %s %s\n", req_getMethod(req), queryFile);
-    if( ! req_isActionAllowed(req, PA_SERVE_PAGE) ) {
+    if( req_getLoginState(req) == LS_LOGIN_FAIL ||
+            ! req_isActionAllowed(req, PA_SERVE_PAGE) )
+    {
+        if( req_getLoginState(req) == LS_LOGIN_FAIL ) {
+            log_debug("authorization fail: sleep 2");
+            sleep(2); /* make dictionary attack harder */
+        }
         resp = printUnauthorized(req_getPath(req), isHeadReq);
     }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 

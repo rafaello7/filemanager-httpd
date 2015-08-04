@@ -39,10 +39,22 @@ Folder *config_getSubSharesForPath(const char *urlPath);
 char *config_getIndexFile(const char *dir, int *sysErrNo);
 
 
-/* Parameter is the "Authorization" header field value.
- * Returns true when the client authorization has passed, false otherwise.
+/* Stores in md5sum a MD5 sum of string constructed as concatenation of:
+ *      username ":" realm ":" password
+ * Returns true on success, false when credentials for the user don't exist.
+ * The userNameLen is length of userName string or may be -1 when the string
+ * is terminated with '\0'.
+ *
+ * The string is formed per definition of A1 value in Digest authorization.
+ * See RFC 2617 (Basic and Digest Access Authentication), section 3.2.2.2
  */
-bool config_isClientAuthorized(const char *authorization);
+bool config_getDigestAuthCredential(const char *userName, int userNameLen,
+        char *md5sum);
+
+
+/* Returns encoded "credential" value to use in configuration file.
+ */
+const char *config_getCredentialsEncoded(const char *userWithPasswd);
 
 
 /* Returns true when the privileged action is set as "supported" in config.

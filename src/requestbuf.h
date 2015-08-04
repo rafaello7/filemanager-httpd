@@ -4,6 +4,11 @@
 #include "membuf.h"
 #include "fmconfig.h"
 
+enum LoginState {
+    LS_LOGGED_OUT,      /* request does not contain "Authorization" header */
+    LS_LOGGED_IN,       /* request contains valid "Authorization" header */
+    LS_LOGIN_FAIL       /* request contains invalid "Authorization" header */
+};
 
 /* HTTP request buffer
  */
@@ -40,10 +45,7 @@ const char *req_getPath(const RequestBuf*);
 const char *req_getHeaderVal(const RequestBuf*, const char *headerName);
 
 
-/* Returns true when request contains authorization header with valid
- * credentials.
- */
-bool req_isLoggedIn(const RequestBuf*);
+enum LoginState req_getLoginState(const RequestBuf*);
 
 
 /* Returns true when client might be interested with log in, i.e.:

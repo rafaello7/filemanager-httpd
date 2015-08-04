@@ -1,6 +1,8 @@
 #ifndef MEMBUF_H
 #define MEMBUF_H
 
+#include "datachunk.h"
+
 
 /* A memory buffer - hyper advanced memory management.
  */
@@ -26,6 +28,12 @@ void mb_appendBuf(MemBuf*, const MemBuf*);
  * The zero byte terminating string is NOT appended.
  */
 void mb_appendStr(MemBuf*, const char*);
+
+
+void mb_appendStrL(MemBuf*, const char *str1, const char *str2, ...);
+
+
+void mb_appendChunk(MemBuf*, const DataChunk*);
 
 
 bool mb_endsWithStr(const MemBuf*, const char*);

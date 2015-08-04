@@ -11,6 +11,7 @@
 #include "filemanager.h"
 #include "fmconfig.h"
 #include "cmdline.h"
+#include "auth.h"
 
 static void fatal(const char *msg, ...)
 {
