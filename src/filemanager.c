@@ -795,7 +795,7 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
     const char *queryFile = req_getPath(req);
     RespBuf *resp;
     bool isHeadReq = !strcmp(req_getMethod(req), "HEAD");
-    int sysErrNo;
+    int sysErrNo = 0;
 
     if( !strcmp(req_getMethod(req), "POST") &&
                 processPost(req, sysPath, &opErrorMsg) )
@@ -889,6 +889,7 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
         folder_free(folder);
         free(sysPath);
     }
+    log_debug("response: %s", resp_getErrorMessage(resp));
     return resp;
 }
 
