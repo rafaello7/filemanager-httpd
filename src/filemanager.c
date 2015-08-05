@@ -538,8 +538,7 @@ static MemBuf *fmtError(int sysErrno, const char *str1, const char *str2, ...)
     va_list args;
     MemBuf *mb;
 
-    mb = mb_new();
-    mb_appendStr(mb, str1);
+    mb = mb_newWithStr(str1);
     if( str2 != NULL ) {
         va_start(args, str2);
         while( str2 != NULL ) {
@@ -761,7 +760,7 @@ static bool processPost(const RequestBuf *req, const char *sysPath,
     }else if( requestType >= RT_MODIFY_BEG &&
             config_isActionAvailable(PA_MODIFY) )
     {
-        requireAuth = req_isActionAllowed(req, PA_MODIFY);
+        requireAuth = !req_isActionAllowed(req, PA_MODIFY);
         if( ! requireAuth ) {
             switch( requestType ) {
             case RT_UPLOAD:
@@ -785,10 +784,7 @@ static bool processPost(const RequestBuf *req, const char *sysPath,
     }else
         opErr = fmtError(0, "unrecognized request", NULL);
 err:
-    if( opErr != NULL ) {
-        mb_appendData(opErr, "", 1);
-        *errMsgBuf = mb_unbox_free(opErr);
-    }
+    *errMsgBuf = mb_unbox_free(opErr);
     return requireAuth;
 }
 

@@ -14,21 +14,35 @@ MemBuf *mb_new(void)
 {
     MemBuf *res = malloc(sizeof(MemBuf));
 
-    res->data = NULL;
     res->dataLen = 0;
+    res->data = malloc(1);
+    res->data[0] = '\0';
+    return res;
+}
+
+void mb_newIfNull(MemBuf * *mb)
+{
+    if( *mb == NULL )
+        *mb = mb_new();
+}
+
+MemBuf *mb_newWithStr(const char *str)
+{
+    int len = strlen(str);
+    MemBuf *res = malloc(sizeof(MemBuf));
+
+    res->dataLen = len;
+    res->data = malloc(len+1);
+    memcpy(res->data, str, len+1);
     return res;
 }
 
 void mb_appendData(MemBuf *mb, const char *data, unsigned dataLen)
 {
-    mb->data = realloc(mb->data, mb->dataLen + dataLen);
+    mb->data = realloc(mb->data, mb->dataLen + dataLen + 1);
     memcpy(mb->data + mb->dataLen, data, dataLen);
     mb->dataLen += dataLen;
-}
-
-void mb_appendBuf(MemBuf *mb, const MemBuf *mbSrc)
-{
-    mb_appendData(mb, mbSrc->data, mbSrc->dataLen);
+    mb->data[mb->dataLen] = '\0';
 }
 
 void mb_appendStr(MemBuf *mb, const char *str)
@@ -65,13 +79,9 @@ bool mb_endsWithStr(const MemBuf *mb, const char *str)
 
 void mb_resize(MemBuf *mb, unsigned newSize)
 {
-    if( newSize == 0 ) {
-        free(mb->data);
-        mb->data = NULL;
-    }else{
-        mb->data = realloc(mb->data, newSize);
-    }
     mb->dataLen = newSize;
+    mb->data = realloc(mb->data, newSize+1);
+    mb->data[newSize] = '\0';
 }
 
 const char *mb_data(const MemBuf *mb)
@@ -89,17 +99,7 @@ void mb_setData(MemBuf *mb, unsigned offset, const char *data, unsigned len)
     memcpy(mb->data + offset, data, len);
 }
 
-void mb_setDataExtend(MemBuf *mb, unsigned offset, const char *data,
-        unsigned len)
-{
-    if( offset + len > mb->dataLen ) {
-        mb->dataLen = offset + len;
-        mb->data = realloc(mb->data, mb->dataLen);
-    }
-    memcpy(mb->data + offset, data, len);
-}
-
-void mb_setStrZEnd(MemBuf *mb, unsigned offset, const char *str)
+void mb_setStrEnd(MemBuf *mb, unsigned offset, const char *str)
 {
     int len = strlen(str) + 1;
 

@@ -144,8 +144,7 @@ void config_parse(void)
     const FolderEntry *fe;
 
     if( (folder = folder_loadDir(configLoc, &sysErrNo)) != NULL ) {
-        MemBuf *filePathName = mb_new();
-        mb_appendStr(filePathName, configLoc);
+        MemBuf *filePathName = mb_newWithStr(configLoc);
         if( ! mb_endsWithStr(filePathName, "/") )
             mb_appendStr(filePathName, "/");
         dirNameLen = mb_dataLen(filePathName);
@@ -154,7 +153,7 @@ void config_parse(void)
                 continue;
             len = strlen(fe->fileName);
             if( len >= 5 && !strcmp(fe->fileName + len - 5, ".conf") ) {
-                mb_setStrZEnd(filePathName, dirNameLen, fe->fileName);
+                mb_setStrEnd(filePathName, dirNameLen, fe->fileName);
                 parseFile(mb_data(filePathName), &shareCount, &credentialCount);
             }
         }
@@ -210,7 +209,7 @@ bool config_switchToTargetUser(void)
 char *config_getSysPathForUrlPath(const char *urlPath)
 {
     const Share *cur, *best = NULL;
-    int urlPathLen, sysPathLen, bestShLen = -1;
+    int urlPathLen, bestShLen = -1;
 
     urlPathLen = strlen(urlPath);
     for(cur = gShares; cur->urlpath; ++cur) {
@@ -225,15 +224,12 @@ char *config_getSysPathForUrlPath(const char *urlPath)
         }
     }
     if( best != NULL ) {
-        MemBuf *filePathName = mb_new();
-        sysPathLen = strlen(best->syspath);
-        mb_appendData(filePathName, best->syspath, sysPathLen);
+        MemBuf *filePathName = mb_newWithStr(best->syspath);
         if( urlPathLen > bestShLen ) {
             mb_appendData(filePathName, urlPath + bestShLen,
                     urlPathLen - bestShLen);
-        }else if( sysPathLen == 0 )
-            mb_appendData(filePathName, "/", 1);
-        mb_appendData(filePathName, "", 1);
+        }else if( mb_dataLen(filePathName) == 0 )
+            mb_appendStr(filePathName, "/");
         return mb_unbox_free(filePathName);
     }
     return NULL;
@@ -278,11 +274,10 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
     struct dirent *dp;
     struct stat st;
     unsigned dirNameLen, matchIdx, bestMatchIdx = gIndexPatternCount;
-    MemBuf *bestIdxFile = mb_new();
+    MemBuf *bestIdxFile = NULL;
 
     if( (d = opendir(dir)) != NULL ) {
-        MemBuf *filePathName = mb_new();
-        mb_appendStr(filePathName, dir);
+        MemBuf *filePathName = mb_newWithStr(dir);
         if( ! mb_endsWithStr(filePathName, "/") )
             mb_appendStr(filePathName, "/");
         dirNameLen = mb_dataLen(filePathName);
@@ -295,11 +290,12 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
                     break;
             }
             if( matchIdx < bestMatchIdx ) {
-                mb_setStrZEnd(filePathName, dirNameLen, dp->d_name);
+                mb_setStrEnd(filePathName, dirNameLen, dp->d_name);
                 if( stat(mb_data(filePathName), &st) == 0 &&
                         ! S_ISDIR(st.st_mode) )
                 {
-                    mb_setStrZEnd(bestIdxFile, 0, mb_data(filePathName));
+                    mb_newIfNull(&bestIdxFile);
+                    mb_setStrEnd(bestIdxFile, 0, mb_data(filePathName));
                 }
             }
         }
@@ -309,7 +305,7 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
     }else{
         *sysErrNo = errno;
     }
-    return mb_unbox_free(bestIdxFile);
+    return bestIdxFile ? mb_unbox_free(bestIdxFile) : NULL;
 }
 
 bool config_getDigestAuthCredential(const char *userName, int userNameLen,

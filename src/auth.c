@@ -29,7 +29,6 @@ char *auth_getAuthResponseHeader(void)
     sprintf(nonce, "%llx", nextNonce);
     mb_appendStrL(authHeader, "Digest realm=\"", FM_REALM, "\", "
             "nonce=\"", nonce, "\", " "qop=\"auth\"", NULL);
-    mb_appendData(authHeader, "", 1);
     log_debug("auth: resp nonce=%s", nonce);
     return mb_unbox_free(authHeader);
 }
@@ -92,7 +91,7 @@ bool auth_isClientAuthorized(const char *authorization,
      * (here: "auth")
      */
     response = mb_new();
-    mb_resize(response, 32);
+    mb_resize(response, 32);    /* a place for MD5 of A1 */
     mb_appendStr(response, ":");
     mb_appendChunk(response, &dchNonce);
     mb_appendStr(response, ":");
@@ -106,10 +105,13 @@ bool auth_isClientAuthorized(const char *authorization,
     md5_calculate(md5sum, mb_data(a), mb_dataLen(a));
     mb_free(a);
     mb_appendStr(response, md5sum);
-    config_getDigestAuthCredential(dchUsername.data, dchUsername.len, md5sum);
-    mb_setData(response, 0, md5sum, 32);
-    md5_calculate(md5sum, mb_data(response), mb_dataLen(response));
-    res = dch_equalsStr(&dchResponse, md5sum);
+    if( config_getDigestAuthCredential(dchUsername.data, dchUsername.len,
+                md5sum) )
+    {
+        mb_setData(response, 0, md5sum, 32);
+        md5_calculate(md5sum, mb_data(response), mb_dataLen(response));
+        res = dch_equalsStr(&dchResponse, md5sum);
+    }
     mb_free(response);
     return res;
 }

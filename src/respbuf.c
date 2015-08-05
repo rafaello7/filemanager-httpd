@@ -101,7 +101,8 @@ MemBuf *resp_finish(RespBuf *resp, bool onlyHead)
     }
     mb_appendStr(resp->header, "\r\n");
     if( ! onlyHead )
-        mb_appendBuf(resp->header, resp->body);
+        mb_appendData(resp->header,
+                mb_data(resp->body), mb_dataLen(resp->body));
     mb_free(resp->body);
     res = resp->header;
     free(resp);

@@ -98,8 +98,7 @@ Folder *folder_loadDir(const char *dir, int *sysErrNo)
 
     *sysErrNo = 0;
     if( (d = opendir(dir)) != NULL ) {
-        MemBuf *filePathName = mb_new();
-        mb_appendStr(filePathName, dir);
+        MemBuf *filePathName = mb_newWithStr(dir);
         if( ! mb_endsWithStr(filePathName, "/") )
             mb_appendStr(filePathName, "/");
         dirNameLen = mb_dataLen(filePathName);
@@ -107,7 +106,7 @@ Folder *folder_loadDir(const char *dir, int *sysErrNo)
         while( (dp = readdir(d)) != NULL ) {
             if( !strcmp(dp->d_name, ".") || ! strcmp(dp->d_name, ".."))
                 continue;
-            mb_setStrZEnd(filePathName, dirNameLen, dp->d_name);
+            mb_setStrEnd(filePathName, dirNameLen, dp->d_name);
             if( stat(mb_data(filePathName), &st) == 0 ) {
                 folder_addEntry(folder, dp->d_name, S_ISDIR(st.st_mode),
                         st.st_size);
