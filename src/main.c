@@ -7,11 +7,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include "filemanager.h"
 #include "fmconfig.h"
 #include "cmdline.h"
 #include "auth.h"
+
 
 static void fatal(const char *msg, ...)
 {
@@ -62,7 +64,7 @@ static void prepareResponse(struct ServerConnection *conn)
 
 static void mainloop(void)
 {
-    int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr;
+    int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags;
     struct sockaddr_in addr;
     struct ServerConnection *connections = NULL, *conn;
     fd_set readFds, writeFds;
@@ -102,6 +104,10 @@ static void mainloop(void)
         if( FD_ISSET(listenfd, &readFds) ) {
             if( (acceptfd = accept(listenfd, NULL, NULL)) < 0 )
                 fatal("accept");
+            if( (fdFlags = fcntl(acceptfd, F_GETFL)) == -1 )
+                fatal("fcntl(F_GETFL)");
+            if( fcntl(acceptfd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
+                fatal("fcntl(F_SETFL)");
             connections = realloc(connections,
                     (connCount+1) * sizeof(struct ServerConnection));
             conn = connections + connCount;

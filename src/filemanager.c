@@ -100,6 +100,10 @@ static const char response_footer[] =
     "value=\"Add\"/></td></tr>\n"
     "</tbody></table></form>\n";
 
+
+/* Note: the may return argument itself (if does not need escape).
+ * The argument cannot be freed while result is used.
+ */
 static const char *escapeHtml(const char *s, int isInJavascriptStr)
 {
     enum { ESCMAX = 6 };
@@ -376,6 +380,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     /* footer */
     resp_appendStrL(resp, "</tbody></table>",
             isModifiable ? response_footer : "", "</body></html>\n", NULL);
+    free(urlPathNoSl);
     return resp;
 }
 
@@ -789,13 +794,14 @@ err:
 }
 
 static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
-        Folder *folder)
+        const Folder *folder)
 {
     char *opErrorMsg = NULL;
     const char *queryFile = req_getPath(req);
     RespBuf *resp;
     bool isHeadReq = !strcmp(req_getMethod(req), "HEAD");
     int sysErrNo = 0;
+    Folder *toFree = NULL;
 
     if( !strcmp(req_getMethod(req), "POST") &&
                 processPost(req, sysPath, &opErrorMsg) )
@@ -807,7 +813,7 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
                 req_isActionAllowed(req, PA_MODIFY) &&
                     access(sysPath, W_OK) == 0;
             if( folder == NULL )
-                folder = folder_loadDir(sysPath, &sysErrNo);
+                folder = toFree = folder_loadDir(sysPath, &sysErrNo);
             if( sysErrNo == 0 ) {
                 resp = printFolderContents(queryFile, folder, isModifiable,
                         req_isWorthPuttingLogOnButton(req),
@@ -821,6 +827,7 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
         }
     }
     free(opErrorMsg);
+    folder_free(toFree);
     return resp;
 }
 
