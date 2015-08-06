@@ -336,10 +336,26 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>");
         else{
-            char buf[20];
+            static const char spc[] = "&thinsp;";
+            char buf[80];
+            int len, dest = sizeof(buf)-1, cpy;
+
             sprintf(buf, "%llu", (cur_ent->size+1023) / 1024);
-            resp_appendStrL(resp, "<td style=\"text-align: right\">", buf,
-                    " kB</td>", NULL);
+            /* insert thin spaces every three digits */
+            len = strlen(buf);
+            buf[dest] = '\0';
+            while( len > 0 ) {
+                cpy = sizeof(spc) - 1;
+                dest -= cpy;
+                memcpy(buf+dest, spc, cpy);
+                cpy = len > 3 ? 3 : len;
+                dest -= cpy;
+                len -= cpy;
+                memcpy(buf+dest, buf+len, cpy);
+            }
+            resp_appendStrL(resp, "<td style=\"text-align: right; "
+                    "padding-left: 1em; white-space: nowrap\">",
+                    buf + dest, "kB</td>", NULL);
         }
         resp_appendStr(resp, "</tr>");
 
