@@ -32,8 +32,7 @@ static void fatal(const char *msg, ...)
 struct ServerConnection {
     int fd;
     RequestBuf *request;
-    MemBuf *response;
-    int responseOff;
+    DataSource *response;
 };
 
 static void freeConn(struct ServerConnection *conn)
@@ -41,7 +40,7 @@ static void freeConn(struct ServerConnection *conn)
     close(conn->fd);
     conn->fd = -1;
     req_free(conn->request);
-    mb_free(conn->response);
+    ds_free(conn->response);
 }
 
 static void prepareResponse(struct ServerConnection *conn)
@@ -59,15 +58,15 @@ static void prepareResponse(struct ServerConnection *conn)
     resp_appendHeader(resp, "Connection", "close");
     resp_appendHeader(resp, "Server", "filemanager-httpd");
     conn->response = resp_finish(resp, isHeadReq);
-    conn->responseOff = 0;
 }
 
 static void mainloop(void)
 {
-    int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags;
+    int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags, sysErrNo;
     struct sockaddr_in addr;
     struct ServerConnection *connections = NULL, *conn;
     fd_set readFds, writeFds;
+    bool isSuccess;
     char buf[65536];
 
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
@@ -134,23 +133,13 @@ static void mainloop(void)
                     prepareResponse(conn);
                 }
             }else if( FD_ISSET(conn->fd, &writeFds) ) {
-                while( conn->responseOff < mb_dataLen(conn->response) &&
-                       (wr = write(conn->fd,
-                        mb_data(conn->response) + conn->responseOff,
-                        mb_dataLen(conn->response) - conn->responseOff)) > 0 )
-                {
-                    conn->responseOff += wr;
-                }
-                if( conn->responseOff < mb_dataLen(conn->response) &&
-                        errno != EWOULDBLOCK )
+                if( (isSuccess = ds_write(conn->response, conn->fd, &sysErrNo))
+                        || sysErrNo != EWOULDBLOCK )
                 {
                     /* ECONNRESET occurs when peer has closed connection
                      * without receiving all data; not worthy to notify */
-                    if( errno != ECONNRESET )
+                    if( !isSuccess && errno != ECONNRESET )
                         perror("write");
-                    conn->responseOff = mb_dataLen(conn->response);
-                }
-                if( conn->responseOff == mb_dataLen(conn->response) ) {
                     FD_CLR(conn->fd, &writeFds);
                     freeConn(conn);
                 }

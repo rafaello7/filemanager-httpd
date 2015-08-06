@@ -75,6 +75,16 @@ unsigned mb_dataLen(const MemBuf*);
 void mb_setData(MemBuf*, unsigned offset, const char *data, unsigned len);
 
 
+/* Fills buffer using read().
+ */
+int mb_readFile(MemBuf*, int fd, unsigned bufOffset, unsigned toRead);
+
+
+/* Fills buffer with '\0' bytes.
+ */
+void mb_fillWithZeros(MemBuf*, unsigned offset, unsigned len);
+
+
 /* Copies the specified string into buffer starting at the specified offset.
  * The buffer is truncated at the string end.
  * Offset shall be less than or equal to buffer length.

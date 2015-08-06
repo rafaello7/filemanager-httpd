@@ -6,11 +6,14 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 struct RespBuf {
     const char*statusStr;
     MemBuf *header;
     MemBuf *body;
+    int fileDesc;
 };
 
 RespBuf *resp_new(HttpStatus status)
@@ -45,6 +48,7 @@ RespBuf *resp_new(HttpStatus status)
     resp->statusStr = statusStr;
     resp->header = mb_new();
     resp->body = mb_new();
+    resp->fileDesc = -1;
     mb_appendStr(resp->header, "HTTP/1.1 ");
     mb_appendStr(resp->header, statusStr);
     mb_appendStr(resp->header, "\r\n");
@@ -74,6 +78,13 @@ void resp_appendStr(RespBuf *resp, const char *str)
     mb_appendStr(resp->body, str);
 }
 
+void resp_enqFile(RespBuf *resp, int fileDesc)
+{
+    if( resp->fileDesc != -1 )
+        close(resp->fileDesc);
+    resp->fileDesc = fileDesc;
+}
+
 void resp_appendStrL(RespBuf *resp, const char *str1, 
         const char *str2, ...)
 {
@@ -90,21 +101,31 @@ void resp_appendStrL(RespBuf *resp, const char *str1,
     }
 }
 
-MemBuf *resp_finish(RespBuf *resp, bool onlyHead)
+DataSource *resp_finish(RespBuf *resp, bool onlyHead)
 {
-    char contentLength[20];
-    MemBuf *res;
+    DataSource *res;
+    unsigned long long fileSize = 0;
 
     if( ! onlyHead ) {
-        sprintf(contentLength, "%u", mb_dataLen(resp->body));
+        char contentLength[20];
+        struct stat st;
+        if( resp->fileDesc != -1 ) {
+            if( fstat(resp->fileDesc, &st) != -1 )
+                fileSize = st.st_size;
+        }
+        sprintf(contentLength, "%llu", mb_dataLen(resp->body) + fileSize);
         resp_appendHeader(resp, "Content-Length", contentLength);
+    }
+    if( resp->fileDesc != -1 && fileSize == 0 ) {
+        close(resp->fileDesc);
+        resp->fileDesc = -1;
     }
     mb_appendStr(resp->header, "\r\n");
     if( ! onlyHead )
         mb_appendData(resp->header,
                 mb_data(resp->body), mb_dataLen(resp->body));
     mb_free(resp->body);
-    res = resp->header;
+    res = ds_new(resp->header, resp->fileDesc, fileSize);
     free(resp);
     return res;
 }

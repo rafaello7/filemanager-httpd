@@ -1,7 +1,7 @@
 #ifndef RESPBUF_H
 #define RESPBUF_H
 
-#include "membuf.h"
+#include "datasource.h"
 
 
 /* HTTP response buffer.
@@ -42,6 +42,16 @@ void resp_appendHeader(RespBuf*, const char *name, const char *value);
 void resp_appendData(RespBuf*, const char *data, unsigned dataLen);
 
 
+/* Sets file descriptor as source of bytes in response body. Previously set
+ * file descriptor is closed.
+ * The descriptor should be opened for read. File contents is not modified.
+ * The function takes ownership over the file descriptor (closes after use).
+ * The file contents is used as data source after exhaustion of data set by
+ * resp_appendData().
+ */
+void resp_enqFile(RespBuf*, int fileDescriptor);
+
+
 /* Appends string to response body, i.e. strlen(str) bytes.
  */
 void resp_appendStr(RespBuf*, const char *str);
@@ -55,7 +65,7 @@ void resp_appendStrL(RespBuf*, const char *str1, const char *str2,  ...);
 
 /* Ends use of the response. Returns the response raw bytes to send.
  */
-MemBuf *resp_finish(RespBuf*, bool onlyHead);
+DataSource *resp_finish(RespBuf*, bool onlyHead);
 
 
 #endif /* RESPBUF_H */

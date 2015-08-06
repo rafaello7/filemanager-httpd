@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <unistd.h>
 
 struct MemBuf {
     char *data;
@@ -106,6 +107,27 @@ void mb_setStrEnd(MemBuf *mb, unsigned offset, const char *str)
     mb->dataLen = offset + len;
     mb->data = realloc(mb->data, mb->dataLen);
     memcpy(mb->data + offset, str, len);
+}
+
+int mb_readFile(MemBuf *mb, int fd, unsigned bufOffset, unsigned toRead)
+{
+    if( bufOffset + toRead > mb->dataLen ) {
+        fprintf(stderr, "mb_readFile error: offset+toRead exceeds buffer size,"
+                "offset=%u, toRead=%u, bufsize=%u\n", bufOffset, toRead,
+                mb->dataLen);
+        abort();
+    }
+    return read(fd, mb->data + bufOffset, toRead);
+}
+
+void mb_fillWithZeros(MemBuf *mb, unsigned offset, unsigned len)
+{
+    if( offset + len > mb->dataLen ) {
+        fprintf(stderr, "mb_setData error: offset+len exceeds buffer size,"
+                "offset=%u, len=%u, bufsize=%u\n", offset, len, mb->dataLen);
+        abort();
+    }
+    memset(mb->data + offset, 0, len);
 }
 
 unsigned mb_dataLen(const MemBuf *mb)

@@ -1,3 +1,10 @@
+#include <stdbool.h>
+#include "filemanager.h"
+#include "fmconfig.h"
+#include "datachunk.h"
+#include "folder.h"
+#include "auth.h"
+#include "fmlog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,13 +13,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <unistd.h>
-#include <stdbool.h>
-#include "filemanager.h"
-#include "fmconfig.h"
-#include "datachunk.h"
-#include "folder.h"
-#include "auth.h"
-#include "fmlog.h"
+#include <fcntl.h>
 
 
 static char *format_path(const char *rootdir, const char *subdir)
@@ -465,25 +466,25 @@ static const char *getContentTypeByFileExt(const char *fname)
 static RespBuf *sendFile(const char *urlPath, const char *sysPath,
         bool onlyHead)
 {
-    FILE *fp;
-    char buf[65536];
-    int rd;
+    int fd;
     RespBuf *resp;
 
-    if( (fp = fopen(sysPath, "r")) != NULL ) {
+    if( (fd = open(sysPath, O_RDONLY)) >= 0 ) {
         log_debug("opened %s", sysPath);
         resp = resp_new(HTTP_200_OK);
         resp_appendHeader(resp, "Content-Type",
                 getContentTypeByFileExt(sysPath));
-        if( ! onlyHead ) {
+        if( onlyHead ) {
+            close(fd);
+        }else{
             // TODO: escape filename
-            sprintf(buf, "inline; filename=\"%s\"", strrchr(urlPath, '/')+1);
-            resp_appendHeader(resp, "Content-Disposition", buf);
-            while( (rd = fread(buf, 1, sizeof(buf), fp)) > 0 ) {
-                resp_appendData(resp, buf, rd);
-            }
+            MemBuf *header = mb_new();
+            mb_appendStrL(header, "inline; filename=\"", 
+                    strrchr(urlPath, '/')+1, "\"", NULL);
+            resp_appendHeader(resp, "Content-Disposition", mb_data(header));
+            mb_free(header);
+            resp_enqFile(resp, fd);
         }
-        fclose(fp);
     }else{
         resp = printErrorPage(errno, urlPath, onlyHead, false);
     }
