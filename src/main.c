@@ -120,29 +120,35 @@ static void mainloop(void)
         while( i < connCount ) {
             conn = connections + i;
             if( FD_ISSET(conn->fd, &readFds) ) {
-                if( (rd = read(conn->fd, buf, sizeof(buf)-1)) < 0 )
-                    fatal("read");
-                if( rd != 0 ) {
-                    wr = req_appendData(conn->request, buf, rd);
-                    if( wr >= 0 ) {
-                        prepareResponse(conn);
-                    }
-                }else{
+                while( (rd = read(conn->fd, buf, sizeof(buf)-1)) > 0 &&
+                        (wr = req_appendData(conn->request, buf, rd)) < 0 )
+                    ;
+                if( rd < 0 ) {
+                    if( errno != EWOULDBLOCK )
+                        fatal("read");
+                }else if( rd == 0 ) {
+                    /* premature EOF */
                     FD_CLR(conn->fd, &readFds);
                     freeConn(conn);
+                }else{  /* rd > 0  =>  wr >= 0 */
+                    prepareResponse(conn);
                 }
             }else if( FD_ISSET(conn->fd, &writeFds) ) {
-                if( (wr = write(conn->fd,
+                while( conn->responseOff < mb_dataLen(conn->response) &&
+                       (wr = write(conn->fd,
                         mb_data(conn->response) + conn->responseOff,
-                        mb_dataLen(conn->response) - conn->responseOff)) < 0 )
+                        mb_dataLen(conn->response) - conn->responseOff)) > 0 )
+                {
+                    conn->responseOff += wr;
+                }
+                if( conn->responseOff < mb_dataLen(conn->response) &&
+                        errno != EWOULDBLOCK )
                 {
                     /* ECONNRESET occurs when peer has closed connection
                      * without receiving all data; not worthy to notify */
                     if( errno != ECONNRESET )
                         perror("write");
                     conn->responseOff = mb_dataLen(conn->response);
-                }else{
-                    conn->responseOff += wr;
                 }
                 if( conn->responseOff == mb_dataLen(conn->response) ) {
                     FD_CLR(conn->fd, &writeFds);

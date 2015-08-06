@@ -6,7 +6,7 @@
 typedef struct {
     const char *fileName;
     bool isDir;
-    unsigned size;
+    unsigned long long size;
 } FolderEntry;
 
 typedef struct Folder Folder;
@@ -19,9 +19,10 @@ Folder *folder_new(void);
 
 /* Adds a new entry to directory listing.
  */
-void folder_addEntry(Folder*, const char *name, bool isDir, unsigned size);
+void folder_addEntry(Folder*, const char *name, bool isDir,
+        unsigned long long size);
 void folder_addEntryChunk(Folder*, const DataChunk *name, bool isDir,
-        unsigned size);
+        unsigned long long size);
 
 
 /* Sorts entries in directory listing. Entries are sorted as follows:

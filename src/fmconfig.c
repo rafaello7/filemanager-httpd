@@ -261,7 +261,7 @@ Folder *config_getSubSharesForPath(const char *urlPath)
                         !dch_equalsStr(&ent, fe->fileName); ++fe)
                     ;
                 if( fe->fileName == NULL )
-                    folder_addEntryChunk(folder, &ent, 1, 0);
+                    folder_addEntryChunk(folder, &ent, true, 0);
             }
         }
     }

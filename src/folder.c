@@ -27,7 +27,7 @@ Folder *folder_new(void)
 }
 
 void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
-        unsigned size)
+        unsigned long long size)
 {
     FolderEntry *fe;
 
@@ -45,7 +45,7 @@ void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
 }
 
 void folder_addEntry(Folder *folder, const char *name, bool isDir,
-        unsigned size)
+        unsigned long long size)
 {
     DataChunk dch;
 

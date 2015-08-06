@@ -336,7 +336,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             resp_appendStr(resp, "<td></td>");
         else{
             char buf[20];
-            sprintf(buf, "%u", (cur_ent->size+1023) / 1024);
+            sprintf(buf, "%llu", (cur_ent->size+1023) / 1024);
             resp_appendStrL(resp, "<td style=\"text-align: right\">", buf,
                     " kB</td>", NULL);
         }
