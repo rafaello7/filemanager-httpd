@@ -121,9 +121,10 @@ DataSource *resp_finish(RespBuf *resp, bool onlyHead)
         close(resp->fileDesc);
         resp->fileDesc = -1;
     }
-    log_debug("response: %s", resp->statusStr);
     if( log_isLevel(2) )
-        log_debug("%s", mb_data(resp->header));
+        log_debug("response: %s", mb_data(resp->header));
+    else
+        log_debug("response: %s", resp->statusStr);
     mb_appendStr(resp->header, "\r\n");
     if( ! onlyHead )
         mb_appendData(resp->header,

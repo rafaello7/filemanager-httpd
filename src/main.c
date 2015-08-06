@@ -1,18 +1,18 @@
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <stdbool.h>
 #include "filemanager.h"
 #include "fmconfig.h"
 #include "cmdline.h"
 #include "auth.h"
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 
 
 static void fatal(const char *msg, ...)
@@ -137,9 +137,10 @@ static void mainloop(void)
                         || sysErrNo != EWOULDBLOCK )
                 {
                     /* ECONNRESET occurs when peer has closed connection
-                     * without receiving all data; not worthy to notify */
-                    if( !isSuccess && errno != ECONNRESET )
-                        perror("write");
+                     * without receiving all data; similar EPIPE.
+                     * Both not worthy to notify */
+                    if( !isSuccess && errno != ECONNRESET && errno != EPIPE )
+                        perror("connected socket write failed");
                     FD_CLR(conn->fd, &writeFds);
                     freeConn(conn);
                 }
@@ -158,6 +159,7 @@ static void mainloop(void)
 int main(int argc, char *argv[])
 {
     if( cmdline_parse(argc, argv) ) {
+        signal(SIGPIPE, SIG_IGN);
         config_parse();
         mainloop();
     }
