@@ -5,11 +5,16 @@
 #include <stdio.h>
 
 
+bool log_isLevel(unsigned level)
+{
+    return cmdline_getLogLevel() >= level;
+}
+
 void log_debug(const char *fmt, ...)
 {
     va_list args;
 
-    if( cmdline_getLogLevel() ) {
+    if( log_isLevel(1) ) {
         va_start(args, fmt);
         vfprintf(stdout, fmt, args);
         va_end(args);

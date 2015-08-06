@@ -3,7 +3,6 @@
 #include "membuf.h"
 #include "auth.h"
 #include "fmlog.h"
-#include "cmdline.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -257,7 +256,7 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
     if( req->rrs == RRS_READ_FINISHED ) {
         const char *auth = req_getHeaderVal(req, "Authorization");
         log_debug("request: %s %s", req->request, req->path);
-        if( cmdline_getLogLevel() > 1 ) {
+        if( log_isLevel(2) ) {
             for(i = 0; i < req->headerCount; ++i)
                 log_debug("%s", req->headers[i]);
         }else if( auth )

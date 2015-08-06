@@ -459,7 +459,6 @@ static const char *getContentTypeByFileExt(const char *fname)
     }
     if( res == NULL )
         res = "application/octet-stream";
-    log_debug("ext=%s, mime=%s", ext, res);
     return res;
 }
 
@@ -897,7 +896,6 @@ RespBuf *filemgr_processRequest(const RequestBuf *req)
         folder_free(folder);
         free(sysPath);
     }
-    log_debug("response: %s", resp_getErrorMessage(resp));
     return resp;
 }
 
