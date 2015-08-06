@@ -19,13 +19,10 @@ struct DataSource {
 static void fillBuffer(DataSource *ds, unsigned filledCount)
 {
     int toFill, rd;
-    static unsigned nn;
 
     toFill = mb_dataLen(ds->data) - filledCount;
     if( filledCount + toFill > ds->nbytes )
         toFill = ds->nbytes - filledCount;
-    printf("%5d fillBuffer: filledCount=%u, toFill=%u\n", ++nn,
-            filledCount, toFill);
     while( toFill > 0 && ds->fileDesc != -1 ) {
         rd = mb_readFile(ds->data, ds->fileDesc, filledCount, toFill);
         if( rd > 0 ) {
