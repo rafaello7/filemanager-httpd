@@ -354,7 +354,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 memcpy(buf+dest, buf+len, cpy);
             }
             resp_appendStrL(resp, "<td style=\"text-align: right; "
-                    "padding-left: 1em; white-space: nowrap\">",
+                    "padding-left: 2em; white-space: nowrap\">",
                     buf + dest, "kB</td>", NULL);
         }
         resp_appendStr(resp, "</tr>");
