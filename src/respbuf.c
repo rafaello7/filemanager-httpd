@@ -102,6 +102,42 @@ void resp_appendStrL(RespBuf *resp, const char *str1,
     }
 }
 
+void resp_appendDataEscapeHtml(RespBuf *resp, const char *data, unsigned len)
+{
+    const char *repl, *dcur = data;
+
+    while( len ) {
+        switch( *dcur ) {
+        case '"':  repl = "&quot;"; break;
+        case '\'': repl = "&apos;"; break;
+        case '&':  repl = "&amp;";  break;
+        case '<':  repl = "&lt;";   break;
+        case '>':  repl = "&gt;";   break;
+        default:   repl = NULL;     break;
+        }
+        if( repl != NULL ) {
+            if( dcur != data )
+                mb_appendData(resp->body, data, dcur-data);
+            mb_appendStr(resp->body, repl);
+            data = dcur + 1;
+        }
+        ++dcur;
+        --len;
+    }
+    if( dcur != data )
+        mb_appendData(resp->body, data, dcur-data);
+}
+
+void resp_appendStrEscapeHtml(RespBuf *resp, const char *str)
+{
+    resp_appendDataEscapeHtml(resp, str, strlen(str));
+}
+
+void resp_appendChunkEscapeHtml(RespBuf *resp, const DataChunk *dch)
+{
+    resp_appendDataEscapeHtml(resp, dch->data, dch->len);
+}
+
 DataSource *resp_finish(RespBuf *resp, bool onlyHead)
 {
     DataSource *res;

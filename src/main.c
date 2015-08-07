@@ -1,5 +1,5 @@
 #include <stdbool.h>
-#include "filemanager.h"
+#include "reqhandler.h"
 #include "fmconfig.h"
 #include "cmdline.h"
 #include "auth.h"
@@ -53,7 +53,7 @@ static void prepareResponse(struct ServerConnection *conn)
         resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
         resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
     }else{
-        resp = filemgr_processRequest(conn->request);
+        resp = reqhdlr_processRequest(conn->request);
     }
     resp_appendHeader(resp, "Connection", "close");
     resp_appendHeader(resp, "Server", "filemanager-httpd");

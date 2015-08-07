@@ -63,6 +63,13 @@ void resp_appendStr(RespBuf*, const char *str);
 void resp_appendStrL(RespBuf*, const char *str1, const char *str2,  ...);
 
 
+/* Appends data/string with replaced special HTML characters by entities.
+ */
+void resp_appendDataEscapeHtml(RespBuf*, const char *data, unsigned len);
+void resp_appendStrEscapeHtml(RespBuf*, const char *str);
+void resp_appendChunkEscapeHtml(RespBuf*, const DataChunk*);
+
+
 /* Ends use of the response. Returns the response raw bytes to send.
  */
 DataSource *resp_finish(RespBuf*, bool onlyHead);

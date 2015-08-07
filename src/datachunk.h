@@ -63,6 +63,11 @@ void dch_trimTrailing(DataChunk*, const char *str);
 void dch_trimWS(DataChunk*);
 
 
+/* Like dirname(), except that returns empty string instead of "."
+ */
+void dch_dirNameOf(const DataChunk *fileName, DataChunk *dirName);
+
+
 /* Extracts sub-chunk of data, which starts at dch begin and continues to
  * (but not including the) first occurrence of the specified string.
  * The dch begin is shifted after end of the found string.
@@ -117,6 +122,18 @@ bool dch_startsWithStrIgnoreCase(const DataChunk*, const char*);
  * Returns -1 when the data chunk does not contain the string.
  */
 int dch_indexOfStr(const DataChunk*, const char*);
+
+
+/* Returns index of end of segment starting at idxFrom and consisting entirely
+ * of c character occurrences.
+ */
+unsigned dch_endOfSpan(const DataChunk*, unsigned idxFrom, char c);
+
+
+/* Returns index of end of segment starting at idxFrom and not containing
+ * c character.
+ */
+unsigned dch_endOfCSpan(const DataChunk*, unsigned idxFrom, char c);
 
 
 /* Returns a copy of the data chunk. The copy is terminated with zero byte.

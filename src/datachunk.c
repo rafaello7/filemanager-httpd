@@ -95,6 +95,22 @@ void dch_trimWS(DataChunk *dch)
     dch_trimTrailing(dch, gWhiteSpaces);
 }
 
+void dch_dirNameOf(const DataChunk *fileName, DataChunk *dirName)
+{
+    unsigned len = fileName->len;
+
+    /* Trim trailing slashes if fileName is a directory, but keep root slash */
+    while( len > 1 && fileName->data[len-1] == '/' )
+        --len;
+    /* strip last path element */
+    while( len && fileName->data[len-1] != '/' )
+        --len;
+    /* trim trailing slashes but keep root slash */
+    while( len > 1 && fileName->data[len-1] == '/' )
+        --len;
+    dch_init(dirName, fileName->data, len);
+}
+
 bool dch_extractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
 {
     int idxBeg, idxEnd;
@@ -201,6 +217,20 @@ int dch_indexOfStr(const DataChunk *dch, const char *str)
     int idxBeg;
 
     return indexOfStr(dch, str, &idxBeg, NULL) ? idxBeg : -1;
+}
+
+unsigned dch_endOfSpan(const DataChunk *dch, unsigned idxFrom, char c)
+{
+    while( idxFrom < dch->len && dch->data[idxFrom] == c )
+        ++idxFrom;
+    return idxFrom;
+}
+
+unsigned dch_endOfCSpan(const DataChunk *dch, unsigned idxFrom, char c)
+{
+    while( idxFrom < dch->len && dch->data[idxFrom] != c )
+        ++idxFrom;
+    return idxFrom;
 }
 
 char *dch_dupToStr(const DataChunk *dch)
