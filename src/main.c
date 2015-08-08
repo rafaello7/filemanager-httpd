@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include "reqhandler.h"
 #include "fmconfig.h"
+#include "fmlog.h"
 #include "cmdline.h"
 #include "auth.h"
 #include <stdio.h>
@@ -14,20 +15,6 @@
 #include <fcntl.h>
 #include <signal.h>
 
-
-static void fatal(const char *msg, ...)
-{
-    int err = errno;
-    va_list args;
-
-    va_start(args, msg);
-    vfprintf(stderr, msg, args);
-    va_end(args);
-    if( err != 0 )
-        fprintf(stderr, ": %s", strerror(err));
-    fprintf(stderr, "\n");
-    exit(1);
-}
 
 struct ServerConnection {
     int fd;
@@ -43,23 +30,6 @@ static void freeConn(struct ServerConnection *conn)
     ds_free(conn->response);
 }
 
-static void prepareResponse(struct ServerConnection *conn)
-{
-    RespBuf *resp = NULL;
-    const char *meth = req_getMethod(conn->request);
-    int isHeadReq = ! strcmp(meth, "HEAD");
-
-    if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
-        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
-        resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
-    }else{
-        resp = reqhdlr_processRequest(conn->request);
-    }
-    resp_appendHeader(resp, "Connection", "close");
-    resp_appendHeader(resp, "Server", "filemanager-httpd");
-    conn->response = resp_finish(resp, isHeadReq);
-}
-
 static void mainloop(void)
 {
     int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags, sysErrNo;
@@ -70,16 +40,16 @@ static void mainloop(void)
     char buf[65536];
 
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
-        fatal("socket");
+        log_fatal("socket");
     i = 1;
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &i, sizeof(i));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(config_getListenPort());
     if( bind(listenfd, (struct sockaddr*)&addr, sizeof(addr)) < 0 )
-        fatal("bind");
+        log_fatal("bind");
     if( listen(listenfd, 5) < 0 )
-        fatal("listen");
+        log_fatal("listen");
     if( ! config_switchToTargetUser() )
         exit(1);
     FD_ZERO(&readFds);
@@ -99,14 +69,14 @@ static void mainloop(void)
                 fdMax = conn->fd;
         }
         if( select(fdMax+1, &readFds, &writeFds, NULL, NULL) < 0 )
-            fatal("select");
+            log_fatal("select");
         if( FD_ISSET(listenfd, &readFds) ) {
             if( (acceptfd = accept(listenfd, NULL, NULL)) < 0 )
-                fatal("accept");
+                log_fatal("accept");
             if( (fdFlags = fcntl(acceptfd, F_GETFL)) == -1 )
-                fatal("fcntl(F_GETFL)");
+                log_fatal("fcntl(F_GETFL)");
             if( fcntl(acceptfd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
-                fatal("fcntl(F_SETFL)");
+                log_fatal("fcntl(F_SETFL)");
             connections = realloc(connections,
                     (connCount+1) * sizeof(struct ServerConnection));
             conn = connections + connCount;
@@ -124,13 +94,15 @@ static void mainloop(void)
                     ;
                 if( rd < 0 ) {
                     if( errno != EWOULDBLOCK )
-                        fatal("read");
+                        log_fatal("read");
                 }else if( rd == 0 ) {
                     /* premature EOF */
                     FD_CLR(conn->fd, &readFds);
                     freeConn(conn);
                 }else{  /* rd > 0  =>  wr >= 0 */
-                    prepareResponse(conn);
+                    conn->response = reqhdlr_processRequest(conn->request);
+                    req_free(conn->request);
+                    conn->request = NULL;
                 }
             }else if( FD_ISSET(conn->fd, &writeFds) ) {
                 if( (isSuccess = ds_write(conn->response, conn->fd, &sysErrNo))
@@ -140,7 +112,7 @@ static void mainloop(void)
                      * without receiving all data; similar EPIPE.
                      * Both not worthy to notify */
                     if( !isSuccess && errno != ECONNRESET && errno != EPIPE )
-                        perror("connected socket write failed");
+                        log_error("connected socket write failed");
                     FD_CLR(conn->fd, &writeFds);
                     freeConn(conn);
                 }

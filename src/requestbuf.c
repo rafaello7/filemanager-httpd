@@ -276,12 +276,14 @@ void req_free(RequestBuf *req)
 {
     int i;
 
-    free(req->request);
-    for(i = 0; i < req->headerCount; ++i)
-        free(req->headers[i]);
-    free(req->headers);
-    free(req->chunkHdr);
-    mb_free(req->body);
-    free(req);
+    if( req != NULL ) {
+        free(req->request);
+        for(i = 0; i < req->headerCount; ++i)
+            free(req->headers[i]);
+        free(req->headers);
+        free(req->chunkHdr);
+        mb_free(req->body);
+        free(req);
+    }
 }
 

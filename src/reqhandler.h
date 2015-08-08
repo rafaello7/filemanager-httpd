@@ -3,12 +3,12 @@
 
 
 #include "requestbuf.h"
-#include "respbuf.h"
+#include "datasource.h"
 
 
 /* Produces response for the specified HTTP request.
  */
-RespBuf *reqhdlr_processRequest(const RequestBuf*);
+DataSource *reqhdlr_processRequest(const RequestBuf*);
 
 
 #endif /* REQHANDLER_H */

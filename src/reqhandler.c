@@ -1,5 +1,5 @@
 #include <stdbool.h>
-#include "requestbuf.h"
+#include "reqhandler.h"
 #include "respbuf.h"
 #include "fmlog.h"
 #include "auth.h"
@@ -257,7 +257,7 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
     return resp;
 }
 
-RespBuf *reqhdlr_processRequest(const RequestBuf *req)
+static RespBuf *doProcessRequest(const RequestBuf *req)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
@@ -323,5 +323,22 @@ RespBuf *reqhdlr_processRequest(const RequestBuf *req)
         free(sysPath);
     }
     return resp;
+}
+
+DataSource *reqhdlr_processRequest(const RequestBuf *req)
+{
+    RespBuf *resp = NULL;
+    const char *meth = req_getMethod(req);
+    int isHeadReq = ! strcmp(meth, "HEAD");
+
+    if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
+        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
+        resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
+    }else{
+        resp = doProcessRequest(req);
+    }
+    resp_appendHeader(resp, "Connection", "close");
+    resp_appendHeader(resp, "Server", "filemanager-httpd");
+    return resp_finish(resp, isHeadReq);
 }
 
