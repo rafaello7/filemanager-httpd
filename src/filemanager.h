@@ -5,23 +5,34 @@
 #include "respbuf.h"
 
 
+typedef struct FileManager FileManager;
+
 enum PostingResult {
     PR_PROCESSED,
     PR_REQUIRE_AUTH
 };
 
+
+FileManager *filemgr_new(const char *sysPath);
+
+
+void filemgr_consumeBodyBytes(FileManager*, const char *data, unsigned len);
+
+enum PostingResult filemgr_bodyBytesComplete(FileManager*);
+
+
 /* Processes POST request on folder
  */
-enum PostingResult filemgr_processPost(const RequestHeader*,
-        const MemBuf *body, const char *sysPath, char **errMsgBuf);
+enum PostingResult filemgr_processPost(FileManager*, const RequestHeader*);
 
 
 /* Returns response page containing folder contents.
  */
-RespBuf *filemgr_printFolderContents(const char *urlPath, const Folder *folder,
-        bool isModifiable, bool showLoginButton, const char *errorMsg,
-        bool onlyHead);
+RespBuf *filemgr_printFolderContents(const FileManager*,
+        const RequestHeader*, int *sysErrNo);
 
+
+void filemgr_free(FileManager*);
 
 /* Returns a <form> with login button.
  */

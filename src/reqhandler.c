@@ -15,7 +15,8 @@
 
 struct RequestHandler {
     const RequestHeader *header;
-    MemBuf *body;
+    FileManager *filemgr;
+    RespBuf *respBuf;
     DataSource *response;
 };
 
@@ -226,34 +227,23 @@ static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
     return resp;
 }
 
-static RespBuf *processFolderReq(const RequestHandler *hdlr,
-        const char *sysPath, const Folder *folder)
+static RespBuf *processFolderReq(RequestHandler *hdlr)
 {
-    char *opErrorMsg = NULL;
     const RequestHeader *rhdr = hdlr->header;
     const char *queryFile = reqhdr_getPath(rhdr);
     RespBuf *resp;
     bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
     int sysErrNo = 0;
-    Folder *toFree = NULL;
 
-    if( !strcmp(reqhdr_getMethod(rhdr), "POST") &&
-            filemgr_processPost(rhdr, hdlr->body, sysPath,
-                &opErrorMsg) == PR_REQUIRE_AUTH)
+    if( !strcmp(reqhdr_getMethod(rhdr), "POST") && filemgr_processPost(
+                hdlr->filemgr, rhdr) == PR_REQUIRE_AUTH)
     {
         resp = printUnauthorized(queryFile, isHeadReq);
     }else{
         if( reqhdr_isActionAllowed(rhdr, PA_LIST_FOLDER) ) {
-            bool isModifiable = sysPath == NULL ? 0 :
-                reqhdr_isActionAllowed(rhdr, PA_MODIFY) &&
-                    access(sysPath, W_OK) == 0;
-            if( folder == NULL )
-                folder = toFree = folder_loadDir(sysPath, &sysErrNo);
-            if( sysErrNo == 0 ) {
-                resp = filemgr_printFolderContents(queryFile, folder,
-                        isModifiable, reqhdr_isWorthPuttingLogOnButton(rhdr),
-                        opErrorMsg, isHeadReq);
-            }else{
+            resp = filemgr_printFolderContents(hdlr->filemgr, rhdr,
+                        &sysErrNo);
+            if( resp == NULL ) {
                 resp = printErrorPage(sysErrNo, queryFile, isHeadReq, false);
             }
         }else{
@@ -261,12 +251,10 @@ static RespBuf *processFolderReq(const RequestHandler *hdlr,
                     reqhdr_isWorthPuttingLogOnButton(rhdr));
         }
     }
-    free(opErrorMsg);
-    folder_free(toFree);
     return resp;
 }
 
-static RespBuf *doProcessRequest(const RequestHandler *hdlr)
+static void doProcessRequest(RequestHandler *hdlr)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
@@ -281,7 +269,7 @@ static RespBuf *doProcessRequest(const RequestHandler *hdlr)
     {
         if( reqhdr_getLoginState(rhdr) == LS_LOGIN_FAIL ) {
             log_debug("authorization fail: sleep 2");
-            sleep(2); /* make dictionary attack harder */
+            sleep(2); /*make a possible dictionary attack harder to overcome*/
         }
         resp = printUnauthorized(reqhdr_getPath(rhdr), isHeadReq);
     }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
@@ -321,7 +309,8 @@ static RespBuf *doProcessRequest(const RequestHandler *hdlr)
             }
             if( sysErrNo == 0 ) {
                 if( isFolder ) {
-                    resp = processFolderReq(hdlr, sysPath, folder);
+                    hdlr->filemgr = filemgr_new(sysPath);
+                    resp = NULL;
                 }else{
                     resp = processFileReq(queryFile, sysPath, isHeadReq);
                 }
@@ -332,40 +321,48 @@ static RespBuf *doProcessRequest(const RequestHandler *hdlr)
         folder_free(folder);
         free(sysPath);
     }
-    return resp;
+    hdlr->respBuf = resp;
 }
 
 RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
 {
     RequestHandler *handler = malloc(sizeof(RequestHandler));
+    const char *meth = reqhdr_getMethod(rhdr);
+    int isHeadReq = ! strcmp(meth, "HEAD");
 
     handler->header = rhdr;
-    handler->body = mb_new();
+    handler->filemgr = NULL;
+    handler->respBuf = NULL;
     handler->response = NULL;
+    if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
+        handler->respBuf = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
+        resp_appendHeader(handler->respBuf, "Allow", "GET, HEAD, POST");
+    }else{
+        doProcessRequest(handler);
+    }
     return handler;
 }
 
 void reqhdlr_consumeBodyBytes(RequestHandler *hdlr, const char *data,
         unsigned len)
 {
-    mb_appendData(hdlr->body, data, len);
+    if( hdlr->filemgr != NULL ) {
+        filemgr_consumeBodyBytes(hdlr->filemgr, data, len);
+    }
 }
 
 void reqhdlr_bodyBytesComplete(RequestHandler *hdlr)
 {
-    RespBuf *resp = NULL;
     const char *meth = reqhdr_getMethod(hdlr->header);
     int isHeadReq = ! strcmp(meth, "HEAD");
 
-    if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
-        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
-        resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
-    }else{
-        resp = doProcessRequest(hdlr);
+    if( hdlr->respBuf == NULL ) {
+        hdlr->respBuf = processFolderReq(hdlr);
     }
-    resp_appendHeader(resp, "Connection", "close");
-    resp_appendHeader(resp, "Server", "filemanager-httpd");
-    hdlr->response = resp_finish(resp, isHeadReq);
+    resp_appendHeader(hdlr->respBuf, "Connection", "close");
+    resp_appendHeader(hdlr->respBuf, "Server", "filemanager-httpd");
+    hdlr->response = resp_finish(hdlr->respBuf, isHeadReq);
+    hdlr->respBuf = NULL;
 }
 
 bool reqhdlr_emitResponseBytes(RequestHandler *hdlr, int fd, int *sysErrNo)
@@ -375,8 +372,10 @@ bool reqhdlr_emitResponseBytes(RequestHandler *hdlr, int fd, int *sysErrNo)
 
 void reqhdlr_free(RequestHandler *hdlr)
 {
-    mb_free(hdlr->body);
-    ds_free(hdlr->response);
-    free(hdlr);
+    if( hdlr != NULL ) {
+        filemgr_free(hdlr->filemgr);
+        ds_free(hdlr->response);
+        free(hdlr);
+    }
 }
 

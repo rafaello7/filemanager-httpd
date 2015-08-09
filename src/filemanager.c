@@ -16,6 +16,12 @@
 #include <fcntl.h>
 
 
+struct FileManager {
+    char *sysPath;
+    MemBuf *body;
+    char *opErrorMsg;
+};
+
 static char *format_path(const char *rootdir, const char *subdir)
 {
     char *res;
@@ -300,8 +306,8 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
     return res;
 }
 
-enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
-        const MemBuf *requestBody, const char *sysPath, char **errMsgBuf)
+enum PostingResult filemgr_processPost(FileManager *filemgr,
+        const RequestHeader *rhdr)
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
@@ -321,7 +327,7 @@ enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
     dch_clear(&file_part.name);
     dch_clear(&newdir_part.name);
     dch_clear(&newname_part.name);
-    if( mb_dataLen(requestBody) == 0 ) {
+    if( mb_dataLen(filemgr->body) == 0 ) {
         opErr = fmtError(0, "bad content length: 0", NULL);
         goto err;
     }
@@ -335,7 +341,7 @@ enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
     }
     ct += 30;
     /*log_debug("boundary: %s", ct);*/
-    dch_init(&bodyData, mb_data(requestBody), mb_dataLen(requestBody));
+    dch_init(&bodyData, mb_data(filemgr->body), mb_dataLen(filemgr->body));
     /* skip first boundary */
     if( ! dch_extractTillStr2(&bodyData, &partData, "--", ct) ) {
         opErr = fmtError(0, "malformed form data", NULL);
@@ -390,18 +396,18 @@ enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
         if( ! requireAuth ) {
             switch( requestType ) {
             case RT_UPLOAD:
-                opErr = upload_file(sysPath, &file_part.filename,
+                opErr = upload_file(filemgr->sysPath, &file_part.filename,
                         &file_part.data);
                 break;
             case RT_RENAME:
-                opErr = rename_file(sysPath, &file_part.data,
+                opErr = rename_file(filemgr->sysPath, &file_part.data,
                         &newdir_part.data, &newname_part.data);
                 break;
             case RT_NEWDIR:
-                opErr = create_newdir(sysPath, &newdir_part.data);
+                opErr = create_newdir(filemgr->sysPath, &newdir_part.data);
                 break;
             case RT_DELETE:
-                opErr = delete_file(sysPath, &file_part.data);
+                opErr = delete_file(filemgr->sysPath, &file_part.data);
                 break;
             default:
                 break;
@@ -410,11 +416,11 @@ enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
     }else
         opErr = fmtError(0, "unrecognized request", NULL);
 err:
-    *errMsgBuf = mb_unbox_free(opErr);
+    filemgr->opErrorMsg = mb_unbox_free(opErr);
     return requireAuth ? PR_REQUIRE_AUTH : PR_PROCESSED;
 }
 
-RespBuf *filemgr_printFolderContents(const char *urlPath, const Folder *folder,
+static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         bool isModifiable, bool showLoginButton, const char *opErrorMsg,
         bool onlyHead)
 {
@@ -568,5 +574,55 @@ RespBuf *filemgr_printFolderContents(const char *urlPath, const Folder *folder,
     resp_appendStrL(resp, "</tbody></table>",
             isModifiable ? response_footer : "", "</body></html>\n", NULL);
     return resp;
+}
+
+RespBuf *filemgr_printFolderContents(const FileManager *filemgr,
+        const RequestHeader *rhdr, int *sysErrNo)
+{
+    Folder *folder;
+    const char *queryFile = reqhdr_getPath(rhdr);
+    bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
+    RespBuf *resp;
+    bool isModifiable = filemgr->sysPath == NULL ? 0 :
+        reqhdr_isActionAllowed(rhdr, PA_MODIFY) &&
+            access(filemgr->sysPath, W_OK) == 0;
+
+    if( filemgr->sysPath != NULL )
+        folder = folder_loadDir(filemgr->sysPath, sysErrNo);
+    else if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
+        *sysErrNo = ENOENT;
+    if( *sysErrNo == 0 ) {
+        resp = printFolderContents(queryFile, folder,
+                isModifiable, reqhdr_isWorthPuttingLogOnButton(rhdr),
+                filemgr->opErrorMsg, isHeadReq);
+    }
+    folder_free(folder);
+    return resp;
+}
+
+FileManager *filemgr_new(const char *sysPath)
+{
+    FileManager *filemgr = malloc(sizeof(FileManager));
+
+    filemgr->sysPath = sysPath ? strdup(sysPath) : NULL;
+    filemgr->body = mb_new();
+    filemgr->opErrorMsg = NULL;
+    return filemgr;
+}
+
+void filemgr_consumeBodyBytes(FileManager *filemgr, const char *data,
+        unsigned len)
+{
+    mb_appendData(filemgr->body, data, len);
+}
+
+void filemgr_free(FileManager *filemgr)
+{
+    if( filemgr != NULL ) {
+        free(filemgr->sysPath);
+        mb_free(filemgr->body);
+        free(filemgr->opErrorMsg);
+        free(filemgr);
+    }
 }
 
