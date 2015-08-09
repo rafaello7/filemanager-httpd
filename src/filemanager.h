@@ -1,7 +1,7 @@
 #ifndef FILEMANAGER_H
 #define FILEMANAGER_H
 
-#include "requestbuf.h"
+#include "requestheader.h"
 #include "respbuf.h"
 
 
@@ -12,8 +12,8 @@ enum PostingResult {
 
 /* Processes POST request on folder
  */
-enum PostingResult filemgr_processPost(const RequestBuf *req,
-        const char *sysPath, char **errMsgBuf);
+enum PostingResult filemgr_processPost(const RequestHeader*,
+        const MemBuf *body, const char *sysPath, char **errMsgBuf);
 
 
 /* Returns response page containing folder contents.

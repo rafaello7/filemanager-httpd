@@ -22,14 +22,9 @@ RequestBuf *req_new(void);
  */
 int req_appendData(RequestBuf*, const char *data, unsigned len);
 
+bool req_isReadFinished(const RequestBuf*);
 
-const RequestHeader *req_getHeader(const RequestBuf*);
-
-
-/* Returns the request body.
- */
-const MemBuf *req_getBody(const RequestBuf*);
-
+bool req_emitResponseBytes(RequestBuf*, int fd, int *sysErrNo);
 
 /* Ends use of the request.
  */

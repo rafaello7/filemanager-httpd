@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include "requestbuf.h"
+#include "reqhandler.h"
 #include "membuf.h"
 #include "auth.h"
 #include "fmlog.h"
@@ -19,8 +20,9 @@ struct RequestBuf {
     enum RequestReadState rrs;
     RequestHeader *header;
     char *chunkHdr;
-    MemBuf *body;
-    unsigned bodyReadLen;
+    RequestHandler *handler;
+    unsigned long long bodyLen;
+    unsigned long long bodyReadLen;
 };
 
 RequestBuf *req_new(void)
@@ -30,19 +32,10 @@ RequestBuf *req_new(void)
     req->rrs = RRS_READ_HEAD;
     req->header = reqhdr_new();
     req->chunkHdr = NULL;
-    req->body = NULL;
+    req->handler = NULL;
+    req->bodyLen = 0;
     req->bodyReadLen = 0;
     return req;
-}
-
-const RequestHeader *req_getHeader(const RequestBuf *req)
-{
-    return req->header;
-}
-
-const MemBuf *req_getBody(const RequestBuf *req)
-{
-    return req->body;
 }
 
 static void onFinishedHeader(RequestBuf *req)
@@ -57,18 +50,15 @@ static void onFinishedHeader(RequestBuf *req)
             val = strchr(val, ',');
         }
     }
+    req->handler = reqhdlr_new(req->header);
     if( isChunked ) {
         req->chunkHdr = strdup("");
         req->rrs = RRS_READ_BODY;
-        req->body = mb_new();
     }else{
-        int bodyLen = 0;
         if( (val = reqhdr_getHeaderVal(req->header, "Content-Length")) != NULL)
-            bodyLen = strtoul(val, NULL, 10);
-        if( bodyLen > 0 ) {
+            req->bodyLen = strtoull(val, NULL, 10);
+        if( req->bodyLen > 0 ) {
             req->rrs = RRS_READ_BODY;
-            req->body = mb_new();
-            mb_resize(req->body, bodyLen);
         }else
             req->rrs = RRS_READ_FINISHED;
     }
@@ -81,17 +71,15 @@ static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
 
     bol = data;
     while( req->rrs == RRS_READ_BODY && bol < data + len ) {
-        int bodyLen = mb_dataLen(req->body);
-        if( req->bodyReadLen < bodyLen ) {
+        if( req->bodyReadLen < req->bodyLen ) {
             addLen = data + len - bol;
-            if( req->bodyReadLen + addLen > bodyLen )
-                addLen = bodyLen - req->bodyReadLen;
-            mb_setData(req->body, req->bodyReadLen,
-                    bol, addLen);
+            if( req->bodyReadLen + addLen > req->bodyLen )
+                addLen = req->bodyLen - req->bodyReadLen;
+            reqhdlr_consumeBodyBytes(req->handler, bol, addLen);
             req->bodyReadLen += addLen;
             bol += addLen;
         }
-        if( req->bodyReadLen == bodyLen ) {
+        if( req->bodyReadLen == req->bodyLen ) {
             if( req->chunkHdr != NULL ) {
                 curLen = strlen(req->chunkHdr);
                 eol = memchr(bol, '\n', len - (bol-data));
@@ -104,14 +92,12 @@ static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
                 if( eol != NULL ) {
                     addLen = strtoul(req->chunkHdr, NULL, 16);
                     if( addLen == 0 ) {
-                        mb_resize(req->body, /* strip CRLF */
-                            mb_dataLen(req->body) - 2);
+                        req->bodyLen -= 2;      /* strip CRLF */
                         req->rrs = RRS_READ_TRAILER;
-                    }else if( mb_dataLen(req->body) == 0 ) {
-                        mb_resize(req->body, addLen+2);
+                    }else if( req->bodyLen == 0 ) {
+                        req->bodyLen = addLen+2;
                     }else{
-                        mb_resize(req->body,
-                            mb_dataLen(req->body) + addLen);
+                        req->bodyLen += addLen;
                         req->bodyReadLen -= 2; /* strip CRLF*/
                     }
                     bol = eol + 1;
@@ -130,6 +116,7 @@ static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
 int req_appendData(RequestBuf *req, const char *data, unsigned len)
 {
     int offset = 0;
+    enum RequestReadState rrsSav = req->rrs;
 
     if( req->rrs == RRS_READ_HEAD ) {
         offset = reqhdr_appendData(req->header, data, len);
@@ -149,7 +136,22 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
         }else
             offset = len;
     }
+    if( (rrsSav == RRS_READ_HEAD || rrsSav == RRS_READ_BODY) &&
+        (req->rrs == RRS_READ_TRAILER || req->rrs == RRS_READ_FINISHED))
+    {
+        reqhdlr_bodyBytesComplete(req->handler);
+    }
     return req->rrs == RRS_READ_FINISHED ? offset : -1;
+}
+
+bool req_isReadFinished(const RequestBuf *req)
+{
+    return req->rrs == RRS_READ_FINISHED;
+}
+
+bool req_emitResponseBytes(RequestBuf *req, int fd, int *sysErrNo)
+{
+    return reqhdlr_emitResponseBytes(req->handler, fd, sysErrNo);
 }
 
 void req_free(RequestBuf *req)
@@ -157,7 +159,7 @@ void req_free(RequestBuf *req)
     if( req != NULL ) {
         reqhdr_free(req->header);
         free(req->chunkHdr);
-        mb_free(req->body);
+        reqhdlr_free(req->handler);
         free(req);
     }
 }

@@ -300,8 +300,8 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
     return res;
 }
 
-enum PostingResult filemgr_processPost(const RequestBuf *req,
-        const char *sysPath, char **errMsgBuf)
+enum PostingResult filemgr_processPost(const RequestHeader *rhdr,
+        const MemBuf *requestBody, const char *sysPath, char **errMsgBuf)
 {
     DataChunk bodyData, partData;
     struct content_part part, file_part, newdir_part, newname_part;
@@ -315,9 +315,7 @@ enum PostingResult filemgr_processPost(const RequestBuf *req,
         RT_DELETE
     } requestType = RT_UNKNOWN;
     MemBuf *opErr = NULL;
-    const RequestHeader *rhdr = req_getHeader(req);
     const char *ct = reqhdr_getHeaderVal(rhdr, "Content-Type");
-    const MemBuf *requestBody = req_getBody(req);
     bool requireAuth = false;
 
     dch_clear(&file_part.name);

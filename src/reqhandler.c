@@ -13,6 +13,13 @@
 #include <fcntl.h>
 
 
+struct RequestHandler {
+    const RequestHeader *header;
+    MemBuf *body;
+    DataSource *response;
+};
+
+
 static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
 {
     char hostname[HOST_NAME_MAX], *newPath;
@@ -219,11 +226,11 @@ static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
     return resp;
 }
 
-static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
-        const Folder *folder)
+static RespBuf *processFolderReq(const RequestHandler *hdlr,
+        const char *sysPath, const Folder *folder)
 {
     char *opErrorMsg = NULL;
-    const RequestHeader *rhdr = req_getHeader(req);
+    const RequestHeader *rhdr = hdlr->header;
     const char *queryFile = reqhdr_getPath(rhdr);
     RespBuf *resp;
     bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
@@ -231,7 +238,8 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
     Folder *toFree = NULL;
 
     if( !strcmp(reqhdr_getMethod(rhdr), "POST") &&
-            filemgr_processPost(req, sysPath, &opErrorMsg) == PR_REQUIRE_AUTH)
+            filemgr_processPost(rhdr, hdlr->body, sysPath,
+                &opErrorMsg) == PR_REQUIRE_AUTH)
     {
         resp = printUnauthorized(queryFile, isHeadReq);
     }else{
@@ -258,12 +266,12 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
     return resp;
 }
 
-static RespBuf *doProcessRequest(const RequestBuf *req)
+static RespBuf *doProcessRequest(const RequestHandler *hdlr)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
     RespBuf *resp;
-    const RequestHeader *rhdr = req_getHeader(req);
+    const RequestHeader *rhdr = hdlr->header;
 
     isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
     queryFile = reqhdr_getPath(rhdr);
@@ -313,7 +321,7 @@ static RespBuf *doProcessRequest(const RequestBuf *req)
             }
             if( sysErrNo == 0 ) {
                 if( isFolder ) {
-                    resp = processFolderReq(req, sysPath, folder);
+                    resp = processFolderReq(hdlr, sysPath, folder);
                 }else{
                     resp = processFileReq(queryFile, sysPath, isHeadReq);
                 }
@@ -327,20 +335,48 @@ static RespBuf *doProcessRequest(const RequestBuf *req)
     return resp;
 }
 
-DataSource *reqhdlr_processRequest(const RequestBuf *req)
+RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
+{
+    RequestHandler *handler = malloc(sizeof(RequestHandler));
+
+    handler->header = rhdr;
+    handler->body = mb_new();
+    handler->response = NULL;
+    return handler;
+}
+
+void reqhdlr_consumeBodyBytes(RequestHandler *hdlr, const char *data,
+        unsigned len)
+{
+    mb_appendData(hdlr->body, data, len);
+}
+
+void reqhdlr_bodyBytesComplete(RequestHandler *hdlr)
 {
     RespBuf *resp = NULL;
-    const char *meth = reqhdr_getMethod(req_getHeader(req));
+    const char *meth = reqhdr_getMethod(hdlr->header);
     int isHeadReq = ! strcmp(meth, "HEAD");
 
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
         resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
         resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
     }else{
-        resp = doProcessRequest(req);
+        resp = doProcessRequest(hdlr);
     }
     resp_appendHeader(resp, "Connection", "close");
     resp_appendHeader(resp, "Server", "filemanager-httpd");
-    return resp_finish(resp, isHeadReq);
+    hdlr->response = resp_finish(resp, isHeadReq);
+}
+
+bool reqhdlr_emitResponseBytes(RequestHandler *hdlr, int fd, int *sysErrNo)
+{
+    return ds_write(hdlr->response, fd, sysErrNo);
+}
+
+void reqhdlr_free(RequestHandler *hdlr)
+{
+    mb_free(hdlr->body);
+    ds_free(hdlr->response);
+    free(hdlr);
 }
 

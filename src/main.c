@@ -18,7 +18,6 @@
 struct ServerConnection {
     int fd;
     RequestBuf *request;
-    DataSource *response;
 };
 
 static void freeConn(struct ServerConnection *conn)
@@ -26,7 +25,6 @@ static void freeConn(struct ServerConnection *conn)
     close(conn->fd);
     conn->fd = -1;
     req_free(conn->request);
-    ds_free(conn->response);
 }
 
 static void mainloop(void)
@@ -59,7 +57,7 @@ static void mainloop(void)
         fdMax = listenfd;
         for(i = 0; i < connCount; ++i) {
             conn = connections + i;
-            if( conn->response == NULL ) {
+            if( ! req_isReadFinished(conn->request) ) {
                 FD_SET(conn->fd, &readFds);
             }else{
                 FD_SET(conn->fd, &writeFds);
@@ -81,7 +79,6 @@ static void mainloop(void)
             conn = connections + connCount;
             conn->fd = acceptfd;
             conn->request = req_new();
-            conn->response = NULL;
             ++connCount;
         }
         i = 0;
@@ -99,12 +96,13 @@ static void mainloop(void)
                     FD_CLR(conn->fd, &readFds);
                     freeConn(conn);
                 }else{  /* rd > 0  =>  wr >= 0 */
+                    /*
                     conn->response = reqhdlr_processRequest(conn->request);
-                    req_free(conn->request);
-                    conn->request = NULL;
+                    */
                 }
             }else if( FD_ISSET(conn->fd, &writeFds) ) {
-                if( (isSuccess = ds_write(conn->response, conn->fd, &sysErrNo))
+                if( (isSuccess = req_emitResponseBytes(conn->request,
+                                conn->fd, &sysErrNo))
                         || sysErrNo != EWOULDBLOCK )
                 {
                     /* ECONNRESET occurs when peer has closed connection
