@@ -17,14 +17,10 @@ enum RequestReadState {
 
 struct RequestBuf {
     enum RequestReadState rrs;
-    char *request;
-    const char *path;
-    char **headers;
-    int headerCount;
+    RequestHeader *header;
     char *chunkHdr;
     MemBuf *body;
     unsigned bodyReadLen;
-    enum LoginState loginState;
 };
 
 RequestBuf *req_new(void)
@@ -32,55 +28,16 @@ RequestBuf *req_new(void)
     RequestBuf *req = malloc(sizeof(RequestBuf));
 
     req->rrs = RRS_READ_HEAD;
-    req->request = strdup("");
-    req->path = "/";
-    req->headers = NULL;
-    req->headerCount = 0;
+    req->header = reqhdr_new();
     req->chunkHdr = NULL;
     req->body = NULL;
+    req->bodyReadLen = 0;
     return req;
 }
 
-const char *req_getMethod(const RequestBuf *req)
+const RequestHeader *req_getHeader(const RequestBuf *req)
 {
-    return req->request;
-}
-
-const char *req_getPath(const RequestBuf *req)
-{
-    return req->path;
-}
-
-const char *req_getHeaderVal(const RequestBuf *req, const char *headerName)
-{
-    int i, len = strlen(headerName);
-    const char *header;
-
-    for(i = 0; i < req->headerCount; ++i) {
-        header = req->headers[i];
-        if( ! strncasecmp(header, headerName, len) && header[len] == ':' ) {
-            header += len + 1;
-            header += strspn(header, " \t");
-            return header;
-        }
-    }
-    return NULL;
-}
-
-enum LoginState req_getLoginState(const RequestBuf *req)
-{
-    return req->loginState;
-}
-
-bool req_isWorthPuttingLogOnButton(const RequestBuf *req)
-{
-    return req->loginState == LS_LOGGED_OUT &&
-        config_givesLoginMorePrivileges();
-}
-
-bool req_isActionAllowed(const RequestBuf *req, enum PrivilegedAction pa)
-{
-    return config_isActionAllowed(pa, req->loginState == LS_LOGGED_IN);
+    return req->header;
 }
 
 const MemBuf *req_getBody(const RequestBuf *req)
@@ -92,33 +49,8 @@ static void onFinishedHeader(RequestBuf *req)
 {
     int isChunked = 0;
     const char *val;
-    char *src, *dest, num[3];
 
-    if( (src = strchr(req->request, ' ')) != NULL ) {
-        *src++ = '\0';
-        req->path = dest = src;
-        while( *src && *src != ' ' ) {
-            if( *src == '%' ) {
-                ++src;
-                num[0] = *src;
-                if( *src ) {
-                    ++src;
-                    num[1] = *src;
-                    if( *src ) ++src;
-                }
-                num[2] = '\0';
-                *((unsigned char*)dest) = strtoul(num, NULL, 16);
-            }else{
-                if( dest != src )
-                    *dest = *src;
-                ++src;
-            }
-            ++dest;
-        }
-        *dest = '\0';
-    }
-    req->bodyReadLen = 0;
-    if( (val = req_getHeaderVal(req, "Transfer-Encoding")) != NULL) {
+    if( (val = reqhdr_getHeaderVal(req->header, "Transfer-Encoding")) != NULL) {
         while( ! isChunked && val ) {
             val += strspn(val, ", \t");
             isChunked = !strncasecmp(val, "chunked", 7);
@@ -131,7 +63,7 @@ static void onFinishedHeader(RequestBuf *req)
         req->body = mb_new();
     }else{
         int bodyLen = 0;
-        if( (val = req_getHeaderVal(req, "Content-Length")) != NULL )
+        if( (val = reqhdr_getHeaderVal(req->header, "Content-Length")) != NULL)
             bodyLen = strtoul(val, NULL, 10);
         if( bodyLen > 0 ) {
             req->rrs = RRS_READ_BODY;
@@ -140,42 +72,6 @@ static void onFinishedHeader(RequestBuf *req)
         }else
             req->rrs = RRS_READ_FINISHED;
     }
-}
-
-static int appendHeaderData(RequestBuf *req, const char *data, unsigned len)
-{
-    const char *bol, *eol;
-    char **curLoc;
-    unsigned curLen, addLen, isFinish = 0;
-
-    bol = data;
-    while( ! isFinish && bol < data + len ) {
-        curLoc = req->headerCount == 0 ? &req->request :
-            req->headers + req->headerCount - 1;
-        curLen = strlen(*curLoc);
-        eol = memchr(bol, '\n', data + len - bol);
-        addLen = (eol==NULL ? data+len : eol) - bol;
-        *curLoc = realloc(*curLoc, curLen + addLen + 1);
-        memcpy(*curLoc + curLen, bol, addLen);
-        curLen += addLen;
-        (*curLoc)[curLen] = '\0';
-        if( eol != NULL ) {
-            if( curLen > 0 && (*curLoc)[curLen-1] == '\r' )
-                (*curLoc)[--curLen] = '\0';
-            if( **curLoc == '\0' ) {
-                isFinish = 1;
-            }else{
-                req->headers = realloc(req->headers,
-                        (req->headerCount+1) * sizeof(char*));
-                req->headers[req->headerCount] = strdup("");
-                ++req->headerCount;
-            }
-            bol = eol + 1;
-        }else{
-            bol = data + len;
-        }
-    }
-    return isFinish ? bol - data : -1;
 }
 
 static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
@@ -233,10 +129,10 @@ static int appendBodyData(RequestBuf *req, const char *data, unsigned len)
 
 int req_appendData(RequestBuf *req, const char *data, unsigned len)
 {
-    int i, offset = 0;
+    int offset = 0;
 
     if( req->rrs == RRS_READ_HEAD ) {
-        offset = appendHeaderData(req, data, len);
+        offset = reqhdr_appendData(req->header, data, len);
         if( offset >= 0 )
             onFinishedHeader(req);
         else
@@ -246,41 +142,20 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
         offset += appendBodyData(req, data + offset, len - offset);
     }
     if( req->rrs == RRS_READ_TRAILER && offset < len ) {
-        int soff = appendHeaderData(req, data + offset, len - offset);
+        int soff = reqhdr_appendData(req->header, data + offset, len - offset);
         if( soff >= 0 ) {
             req->rrs = RRS_READ_FINISHED;
             offset += soff;
         }else
             offset = len;
     }
-    if( req->rrs == RRS_READ_FINISHED ) {
-        const char *auth = req_getHeaderVal(req, "Authorization");
-        log_debug("request: %s %s", req->request, req->path);
-        if( log_isLevel(2) ) {
-            for(i = 0; i < req->headerCount; ++i)
-                log_debug("%s", req->headers[i]);
-        }else if( auth )
-            log_debug("Authorization: %s", auth);
-        if( auth == NULL )
-            req->loginState = LS_LOGGED_OUT;
-        else{
-            req->loginState =
-                auth_isClientAuthorized(auth, req_getMethod(req)) ?
-                    LS_LOGGED_IN : LS_LOGIN_FAIL;
-        }
-    }
     return req->rrs == RRS_READ_FINISHED ? offset : -1;
 }
 
 void req_free(RequestBuf *req)
 {
-    int i;
-
     if( req != NULL ) {
-        free(req->request);
-        for(i = 0; i < req->headerCount; ++i)
-            free(req->headers[i]);
-        free(req->headers);
+        reqhdr_free(req->header);
         free(req->chunkHdr);
         mb_free(req->body);
         free(req);

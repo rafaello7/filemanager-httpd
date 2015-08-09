@@ -315,7 +315,8 @@ enum PostingResult filemgr_processPost(const RequestBuf *req,
         RT_DELETE
     } requestType = RT_UNKNOWN;
     MemBuf *opErr = NULL;
-    const char *ct = req_getHeaderVal(req, "Content-Type");
+    const RequestHeader *rhdr = req_getHeader(req);
+    const char *ct = reqhdr_getHeaderVal(rhdr, "Content-Type");
     const MemBuf *requestBody = req_getBody(req);
     bool requireAuth = false;
 
@@ -383,11 +384,11 @@ enum PostingResult filemgr_processPost(const RequestBuf *req,
             break;
     }
     if( requestType == RT_LOGIN ) {
-        requireAuth = req_getLoginState(req) != LS_LOGGED_IN;
+        requireAuth = reqhdr_getLoginState(rhdr) != LS_LOGGED_IN;
     }else if( requestType >= RT_MODIFY_BEG &&
             config_isActionAvailable(PA_MODIFY) )
     {
-        requireAuth = !req_isActionAllowed(req, PA_MODIFY);
+        requireAuth = !reqhdr_isActionAllowed(rhdr, PA_MODIFY);
         if( ! requireAuth ) {
             switch( requestType ) {
             case RT_UPLOAD:

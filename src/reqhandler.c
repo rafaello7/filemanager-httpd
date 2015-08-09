@@ -191,7 +191,7 @@ static const char *getContentTypeByFileExt(const char *fname)
     return res;
 }
 
-static RespBuf *sendFile(const char *urlPath, const char *sysPath,
+static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
         bool onlyHead)
 {
     int fd;
@@ -223,33 +223,34 @@ static RespBuf *processFolderReq(const RequestBuf *req, const char *sysPath,
         const Folder *folder)
 {
     char *opErrorMsg = NULL;
-    const char *queryFile = req_getPath(req);
+    const RequestHeader *rhdr = req_getHeader(req);
+    const char *queryFile = reqhdr_getPath(rhdr);
     RespBuf *resp;
-    bool isHeadReq = !strcmp(req_getMethod(req), "HEAD");
+    bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
     int sysErrNo = 0;
     Folder *toFree = NULL;
 
-    if( !strcmp(req_getMethod(req), "POST") &&
+    if( !strcmp(reqhdr_getMethod(rhdr), "POST") &&
             filemgr_processPost(req, sysPath, &opErrorMsg) == PR_REQUIRE_AUTH)
     {
         resp = printUnauthorized(queryFile, isHeadReq);
     }else{
-        if( req_isActionAllowed(req, PA_LIST_FOLDER) ) {
+        if( reqhdr_isActionAllowed(rhdr, PA_LIST_FOLDER) ) {
             bool isModifiable = sysPath == NULL ? 0 :
-                req_isActionAllowed(req, PA_MODIFY) &&
+                reqhdr_isActionAllowed(rhdr, PA_MODIFY) &&
                     access(sysPath, W_OK) == 0;
             if( folder == NULL )
                 folder = toFree = folder_loadDir(sysPath, &sysErrNo);
             if( sysErrNo == 0 ) {
                 resp = filemgr_printFolderContents(queryFile, folder,
-                        isModifiable, req_isWorthPuttingLogOnButton(req),
+                        isModifiable, reqhdr_isWorthPuttingLogOnButton(rhdr),
                         opErrorMsg, isHeadReq);
             }else{
                 resp = printErrorPage(sysErrNo, queryFile, isHeadReq, false);
             }
         }else{
             resp = printErrorPage(ENOENT, queryFile, isHeadReq,
-                    req_isWorthPuttingLogOnButton(req));
+                    reqhdr_isWorthPuttingLogOnButton(rhdr));
         }
     }
     free(opErrorMsg);
@@ -262,18 +263,19 @@ static RespBuf *doProcessRequest(const RequestBuf *req)
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
     RespBuf *resp;
+    const RequestHeader *rhdr = req_getHeader(req);
 
-    isHeadReq = !strcmp(req_getMethod(req), "HEAD");
-    queryFile = req_getPath(req);
+    isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
+    queryFile = reqhdr_getPath(rhdr);
     queryFileLen = strlen(queryFile);
-    if( req_getLoginState(req) == LS_LOGIN_FAIL ||
-            ! req_isActionAllowed(req, PA_SERVE_PAGE) )
+    if( reqhdr_getLoginState(rhdr) == LS_LOGIN_FAIL ||
+            ! reqhdr_isActionAllowed(rhdr, PA_SERVE_PAGE) )
     {
-        if( req_getLoginState(req) == LS_LOGIN_FAIL ) {
+        if( reqhdr_getLoginState(rhdr) == LS_LOGIN_FAIL ) {
             log_debug("authorization fail: sleep 2");
             sleep(2); /* make dictionary attack harder */
         }
-        resp = printUnauthorized(req_getPath(req), isHeadReq);
+        resp = printUnauthorized(reqhdr_getPath(rhdr), isHeadReq);
     }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
     {
@@ -313,7 +315,7 @@ static RespBuf *doProcessRequest(const RequestBuf *req)
                 if( isFolder ) {
                     resp = processFolderReq(req, sysPath, folder);
                 }else{
-                    resp = sendFile(queryFile, sysPath, isHeadReq);
+                    resp = processFileReq(queryFile, sysPath, isHeadReq);
                 }
             }else{
                 resp = printErrorPage(sysErrNo, queryFile, isHeadReq, false);
@@ -328,7 +330,7 @@ static RespBuf *doProcessRequest(const RequestBuf *req)
 DataSource *reqhdlr_processRequest(const RequestBuf *req)
 {
     RespBuf *resp = NULL;
-    const char *meth = req_getMethod(req);
+    const char *meth = reqhdr_getMethod(req_getHeader(req));
     int isHeadReq = ! strcmp(meth, "HEAD");
 
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
