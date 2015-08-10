@@ -136,11 +136,8 @@ int req_appendData(RequestBuf *req, const char *data, unsigned len)
         }else
             offset = len;
     }
-    if( (rrsSav == RRS_READ_HEAD || rrsSav == RRS_READ_BODY) &&
-        (req->rrs == RRS_READ_TRAILER || req->rrs == RRS_READ_FINISHED))
-    {
-        reqhdlr_bodyBytesComplete(req->handler);
-    }
+    if( rrsSav != RRS_READ_FINISHED && req->rrs == RRS_READ_FINISHED)
+        reqhdlr_requestReadCompleted(req->handler, req->header);
     return req->rrs == RRS_READ_FINISHED ? offset : -1;
 }
 

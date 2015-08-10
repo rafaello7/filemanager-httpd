@@ -18,8 +18,6 @@ FileManager *filemgr_new(const char *sysPath);
 
 void filemgr_consumeBodyBytes(FileManager*, const char *data, unsigned len);
 
-enum PostingResult filemgr_bodyBytesComplete(FileManager*);
-
 
 /* Processes POST request on folder
  */

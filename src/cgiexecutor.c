@@ -118,7 +118,7 @@ void cgiexe_consumeBodyBytes(CgiExecutor *cgiexe, const char *data,
     write(cgiexe->outFd, data, len);
 }
 
-RespBuf *cgiexe_bodyBytesComplete(CgiExecutor *cgiexe, const RequestHeader *hdr)
+RespBuf *cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
 {
     RespBuf *resp = NULL;
     char buf[4096];
@@ -126,22 +126,23 @@ RespBuf *cgiexe_bodyBytesComplete(CgiExecutor *cgiexe, const RequestHeader *hdr)
     CgiRespHeader *rhdr;
     const char *headerVal;
 
-    rhdr = cgirhdr_new();
     close(cgiexe->outFd);
     cgiexe->outFd = -1;
+    rhdr = cgirhdr_new();
     while( (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
         offset = 0;
-        if( resp == NULL && (offset = cgirhdr_appendData(rhdr, buf, rd)) >= 0) {
+        if( resp == NULL && (offset = cgirhdr_appendData(rhdr, buf, rd)) >= 0)
             resp = resp_new(HTTP_200_OK);
-            headerVal = cgirhdr_getHeaderVal(rhdr, "Content-Type");
-            resp_appendHeader(resp, "Content-Type",
-                    headerVal ? headerVal : "text/plain");
-        }
         if( resp != NULL )
             resp_appendData(resp, buf + offset, rd - offset);
     }
     close(cgiexe->inFd);
     cgiexe->inFd = -1;
+    if( resp == NULL ) /* incomplete header in CGI response */
+        resp = resp_new(HTTP_200_OK);
+    headerVal = cgirhdr_getHeaderVal(rhdr, "Content-Type");
+    resp_appendHeader(resp, "Content-Type",
+            headerVal ? headerVal : "text/plain");
     cgirhdr_free(rhdr);
     return resp;
 }

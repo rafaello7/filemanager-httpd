@@ -9,11 +9,6 @@
 typedef struct RequestHandler RequestHandler;
 
 
-/* Produces response for the specified HTTP request.
- */
-DataSource *reqhdlr_processRequest(const RequestBuf*);
-
-
 /* Creates a new request handler.
  */
 RequestHandler *reqhdlr_new(const RequestHeader*);
@@ -24,9 +19,9 @@ RequestHandler *reqhdlr_new(const RequestHeader*);
 void reqhdlr_consumeBodyBytes(RequestHandler*, const char *data, unsigned len);
 
 
-/* Signals the handler that provided request body is complete.
+/* Signals the handler that request is completely read.
  */
-void reqhdlr_bodyBytesComplete(RequestHandler*);
+void reqhdlr_requestReadCompleted(RequestHandler*, const RequestHeader*);
 
 
 /* Writes response data to file (socket) given by fd.

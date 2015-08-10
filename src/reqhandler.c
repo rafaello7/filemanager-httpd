@@ -15,7 +15,6 @@
 
 
 struct RequestHandler {
-    const RequestHeader *header;
     FileManager *filemgr;
     CgiExecutor *cgiexe;
     RespBuf *respBuf;
@@ -255,12 +254,11 @@ static RespBuf *processFolderReq(const RequestHeader *rhdr,
     return resp;
 }
 
-static void doProcessRequest(RequestHandler *hdlr)
+static void doProcessRequest(RequestHandler *hdlr, const RequestHeader *rhdr)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
     RespBuf *resp = NULL;
-    const RequestHeader *rhdr = hdlr->header;
 
     isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
     queryFile = reqhdr_getPath(rhdr);
@@ -332,7 +330,6 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
     const char *meth = reqhdr_getMethod(rhdr);
     int isHeadReq = ! strcmp(meth, "HEAD");
 
-    handler->header = rhdr;
     handler->filemgr = NULL;
     handler->cgiexe = NULL;
     handler->respBuf = NULL;
@@ -341,7 +338,7 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
         handler->respBuf = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
         resp_appendHeader(handler->respBuf, "Allow", "GET, HEAD, POST");
     }else{
-        doProcessRequest(handler);
+        doProcessRequest(handler, rhdr);
     }
     return handler;
 }
@@ -356,21 +353,21 @@ void reqhdlr_consumeBodyBytes(RequestHandler *hdlr, const char *data,
     }
 }
 
-void reqhdlr_bodyBytesComplete(RequestHandler *hdlr)
+void reqhdlr_requestReadCompleted(RequestHandler *hdlr,
+        const RequestHeader *rhdr)
 {
-    const char *meth = reqhdr_getMethod(hdlr->header);
+    const char *meth = reqhdr_getMethod(rhdr);
     int isHeadReq = ! strcmp(meth, "HEAD");
 
     if( hdlr->respBuf == NULL ) {
         if( hdlr->filemgr != NULL )
-            hdlr->respBuf = processFolderReq(hdlr->header, hdlr->filemgr);
+            hdlr->respBuf = processFolderReq(rhdr, hdlr->filemgr);
         else if( hdlr->cgiexe != NULL ) {
-            hdlr->respBuf = cgiexe_bodyBytesComplete(hdlr->cgiexe,
-                    hdlr->header);
+            hdlr->respBuf = cgiexe_requestReadCompleted(hdlr->cgiexe);
         }else
             hdlr->respBuf = printMesgPage(HTTP_500,
                     "reqhandler: unspecified handler",
-                    reqhdr_getPath(hdlr->header), isHeadReq, false);
+                    reqhdr_getPath(rhdr), isHeadReq, false);
 
     }
     resp_appendHeader(hdlr->respBuf, "Connection", "close");
