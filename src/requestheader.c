@@ -132,11 +132,12 @@ static void checkAuthorization(RequestHeader *req)
     }
 }
 
-static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
+int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
 {
     const char *bol, *eol;
     char **curLoc, *colon;
-    unsigned curLen, addLen, isFinish = 0;
+    unsigned curLen, addLen, i;
+    bool isFinish = false;
 
     bol = data;
     while( ! isFinish && bol < data + len ) {
@@ -153,7 +154,7 @@ static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
             if( curLen > 0 && (*curLoc)[curLen-1] == '\r' )
                 (*curLoc)[--curLen] = '\0';
             if( **curLoc == '\0' ) {    /* empty line */
-                isFinish = 1;
+                isFinish = true;
             }else{
                 if( req->headerCount >= 0 ) {
                     /* replace colon with '\0' */
@@ -180,14 +181,7 @@ static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
             bol = data + len;
         }
     }
-    return isFinish ? bol - data : -1;
-}
-
-int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
-{
-    int i, offset;
-
-    if( (offset = appendHeaderData(req, data, len)) >= 0 ) {
+    if( isFinish ) {
         log_debug("request: %s %s", req->request, req->path);
         if( log_isLevel(2) ) {
             for(i = 0; i < req->headerCount; ++i)
@@ -195,7 +189,7 @@ int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
                         req->headers[i] + strlen(req->headers[i]) + 1);
         }
     }
-    return offset;
+    return isFinish ? bol - data : -1;
 }
 
 void reqhdr_free(RequestHeader *req)
