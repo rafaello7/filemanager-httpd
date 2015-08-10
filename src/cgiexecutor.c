@@ -1,19 +1,71 @@
 #include <stdbool.h>
 #include "cgiexecutor.h"
+#include "cgirespheader.h"
 #include "fmlog.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 
 
 struct CgiExecutor {
     int outFd, inFd;
 };
 
+static void appendEnv(char ***envpLoc, const char *name, const char *value)
+{
+    int envCount = 0, eqpos;
+    char **envp, *env;
+
+    envp = *envpLoc;
+    if( envp != NULL ) {
+        while( envp[envCount] )
+            ++envCount;
+    }
+    envp = realloc(envp, (envCount+2) * sizeof(char*));
+    eqpos = strlen(name);
+    env = malloc(eqpos + strlen(value) + 2);
+    strcpy(env, name);
+    env[eqpos] = '=';
+    strcpy(env+eqpos+1, value);
+    envp[envCount++] = env;
+    envp[envCount] = NULL;
+    *envpLoc = envp;
+}
+
+static void putHeader(char ***envpLoc, const char *headerName,
+        const char *headerValue)
+{
+    static const char *omitHeaders[] = {
+        "Content-Length", "Content-Type", "Authorization", "Connection", NULL
+    };
+    int i, len;
+    char *nameBuf;
+
+    for(i = 0; omitHeaders[i]; ++i) {
+        if( !strcasecmp(headerName, omitHeaders[i]) )
+            return;
+    }
+    len = strlen(headerName);
+    nameBuf = malloc(len + 6);
+    strcpy(nameBuf, "HTTP_");
+    for(i = 0; headerName[i]; ++i) {
+        if( headerName[i] == '-' )
+            nameBuf[i+5] = '_';
+        else
+            nameBuf[i+5] = toupper(headerName[i]);
+    }
+    nameBuf[i+5] = '\0';
+    appendEnv(envpLoc, nameBuf, headerValue);
+    free(nameBuf);
+}
+
 static void runCgi(const RequestHeader *hdr, const char *exePath)
 {
     const char *arg0;
-    char **argv, **envp;
+    char **argv, **envp = NULL;
+    const char *headerName, *headerVal;
+    unsigned i;
 
     argv = malloc(2 * sizeof(char*));
     if( (arg0 = strrchr(exePath, '/')) == NULL )
@@ -22,9 +74,10 @@ static void runCgi(const RequestHeader *hdr, const char *exePath)
         ++arg0;
     argv[0] = strdup(arg0);
     argv[1] = NULL;
-    envp = malloc(2 * sizeof(char*));
-    envp[0] = "HELLO=world";
-    envp[1] = NULL;
+    appendEnv(&envp, "GATEWAY_INTERFACE", "1.1");
+    appendEnv(&envp, "REQUEST_METHOD", reqhdr_getMethod(hdr));
+    for(i = 0; reqhdr_getHeaderAt(hdr, i, &headerName, &headerVal); ++i)
+        putHeader(&envp, headerName, headerVal);
     execve(exePath, argv, envp);
     exit(1);
 }
@@ -67,17 +120,29 @@ void cgiexe_consumeBodyBytes(CgiExecutor *cgiexe, const char *data,
 
 RespBuf *cgiexe_bodyBytesComplete(CgiExecutor *cgiexe, const RequestHeader *hdr)
 {
-    RespBuf *resp = resp_new(HTTP_200_OK);
+    RespBuf *resp = NULL;
     char buf[4096];
-    int rd;
+    int offset, rd;
+    CgiRespHeader *rhdr;
+    const char *headerVal;
 
+    rhdr = cgirhdr_new();
     close(cgiexe->outFd);
     cgiexe->outFd = -1;
     while( (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
-        resp_appendData(resp, buf, rd);
+        offset = 0;
+        if( resp == NULL && (offset = cgirhdr_appendData(rhdr, buf, rd)) >= 0) {
+            resp = resp_new(HTTP_200_OK);
+            headerVal = cgirhdr_getHeaderVal(rhdr, "Content-Type");
+            resp_appendHeader(resp, "Content-Type",
+                    headerVal ? headerVal : "text/plain");
+        }
+        if( resp != NULL )
+            resp_appendData(resp, buf + offset, rd - offset);
     }
     close(cgiexe->inFd);
     cgiexe->inFd = -1;
+    cgirhdr_free(rhdr);
     return resp;
 }
 

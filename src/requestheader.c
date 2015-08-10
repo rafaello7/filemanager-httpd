@@ -51,6 +51,7 @@ bool reqhdr_getHeaderAt(const RequestHeader *req, unsigned idx,
     headerLine = req->headers[idx];
     *nameBuf = headerLine;
     *valueBuf = headerLine + strlen(headerLine) + 1;
+    *valueBuf += strspn(*valueBuf, " \t");
     return true;
 }
 
@@ -164,8 +165,8 @@ int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
                         checkAuthorization(req);
                     }else{
                         log_debug("No colon in header line (line ignored): %s",
-                                req->headers[req->headerCount-1]);
-                        free(req->headers[req->headerCount-1]);
+                                req->headers[req->headerCount]);
+                        free(req->headers[req->headerCount]);
                         --req->headerCount;
                     }
                 }else
