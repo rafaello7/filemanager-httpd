@@ -36,6 +36,10 @@ static const char *gSwitchUser = "www-data";
 static const char **gIndexPatterns;
 static unsigned gIndexPatternCount;
 
+/* CGI script patterns
+ */
+static const char **gCgiPatterns;
+static unsigned gCgiPatternCount;
 
 /* List of shares, terminated with one with urlpath set to NULL
  */
@@ -82,6 +86,13 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
                         gIndexPatterns = realloc(gIndexPatterns,
                             (gIndexPatternCount+1) * sizeof(const char*));
                         gIndexPatterns[gIndexPatternCount++] =
+                            dch_dupToStr(&dchPatt);
+                    }
+                }else if( dch_equalsStr(&dchName, "cgi") ) {
+                    while( dch_extractTillWS(&dchValue, &dchPatt) ) {
+                        gCgiPatterns = realloc(gCgiPatterns,
+                            (gCgiPatternCount+1) * sizeof(const char*));
+                        gCgiPatterns[gCgiPatternCount++] =
                             dch_dupToStr(&dchPatt);
                     }
                 }else if( dch_equalsStr(&dchName, "port") ) {
@@ -286,7 +297,7 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
                 continue;
             for( matchIdx = 0; matchIdx < bestMatchIdx; ++matchIdx ) {
                 if( fnmatch(gIndexPatterns[matchIdx], dp->d_name,
-                            FNM_PATHNAME | FNM_PERIOD) == 0 )
+                            FNM_PERIOD) == 0 )
                     break;
             }
             if( matchIdx < bestMatchIdx ) {
@@ -306,6 +317,27 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
         *sysErrNo = errno;
     }
     return bestIdxFile ? mb_unbox_free(bestIdxFile) : NULL;
+}
+
+bool config_isCGI(const char *urlPath)
+{
+    unsigned i;
+    const char *cgiPatt;
+    bool match = false;
+
+    for( i = 0; i < gCgiPatternCount && !match; ++i) {
+        cgiPatt = gCgiPatterns[i];
+        if( cgiPatt[0] == '/' )
+            match = fnmatch(cgiPatt, urlPath, FNM_PATHNAME|FNM_PERIOD) == 0;
+        else{
+            while( urlPath != NULL && ! match ) {
+                ++urlPath;
+                match = fnmatch(cgiPatt, urlPath, FNM_PATHNAME|FNM_PERIOD) == 0;
+                urlPath = strchr(urlPath, '/');
+            }
+        }
+    }
+    return match;
 }
 
 bool config_getDigestAuthCredential(const char *userName, int userNameLen,

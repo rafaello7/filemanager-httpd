@@ -12,7 +12,10 @@ struct RequestHeader {
     char *request;
     const char *path;
     char **headers;
-    unsigned headerCount;
+    int headerCount;    /* number of complete headers; the headerCount-th item
+                         * is incomplete.
+                         * Value -1 means the request line is incomplete.
+                         */
     enum LoginState loginState;
 };
 
@@ -23,7 +26,7 @@ RequestHeader *reqhdr_new(void)
     req->request = strdup("");
     req->path = NULL;
     req->headers = NULL;
-    req->headerCount = 0;
+    req->headerCount = -1;
     req->loginState = LS_LOGGED_OUT;
     return req;
 }
@@ -38,27 +41,34 @@ const char *reqhdr_getPath(const RequestHeader *req)
     return req->path;
 }
 
-static const char *getHeaderVal(char *const*headers, unsigned headerCount,
-        const char *headerName)
+bool reqhdr_getHeaderAt(const RequestHeader *req, unsigned idx,
+        const char **nameBuf, const char **valueBuf)
 {
-    unsigned i, len = strlen(headerName);
-    const char *header;
+    const char *headerLine;
 
-    for(i = 0; i < headerCount; ++i) {
-        header = headers[i];
-        if( ! strncasecmp(header, headerName, len) && header[len] == ':' ) {
-            header += len + 1;
-            header += strspn(header, " \t");
-            return header;
-        }
-    }
-    return NULL;
+    if( (int)idx >= req->headerCount )
+        return false;
+    headerLine = req->headers[idx];
+    *nameBuf = headerLine;
+    *valueBuf = headerLine + strlen(headerLine) + 1;
+    return true;
 }
 
 const char *reqhdr_getHeaderVal(const RequestHeader *req,
         const char *headerName)
 {
-    return getHeaderVal(req->headers, req->headerCount, headerName);
+    unsigned i;
+    const char *headerLine;
+
+    for(i = 0; i < req->headerCount; ++i) {
+        headerLine = req->headers[i];
+        if( ! strcasecmp(headerLine, headerName) ) {
+            headerLine += strlen(headerName) + 1;
+            headerLine += strspn(headerLine, " \t");
+            return headerLine;
+        }
+    }
+    return NULL;
 }
 
 enum LoginState reqhdr_getLoginState(const RequestHeader *req)
@@ -109,16 +119,29 @@ static void decodeRequestStartLine(RequestHeader *req)
     }
 }
 
+static void checkAuthorization(RequestHeader *req)
+{
+    static const char authHeaderName[] = "Authorization";
+    const char *auth = req->headers[req->headerCount];
+
+    if(req->loginState == LS_LOGGED_OUT && !strcasecmp(auth, authHeaderName)) {
+        auth += sizeof(authHeaderName);
+        req->loginState = auth_isClientAuthorized(auth, reqhdr_getMethod(req)) ?
+            LS_LOGGED_IN : LS_LOGIN_FAIL;
+        log_debug("Authorization: %s", auth);
+    }
+}
+
 static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
 {
     const char *bol, *eol;
-    char **curLoc;
+    char **curLoc, *colon;
     unsigned curLen, addLen, isFinish = 0;
 
     bol = data;
     while( ! isFinish && bol < data + len ) {
-        curLoc = req->headerCount == 0 ? &req->request :
-            req->headers + req->headerCount - 1;
+        curLoc = req->headerCount == -1 ? &req->request :
+            req->headers + req->headerCount;
         curLen = strlen(*curLoc);
         eol = memchr(bol, '\n', data + len - bol);
         addLen = (eol==NULL ? data+len : eol) - bol;
@@ -129,13 +152,28 @@ static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
         if( eol != NULL ) {
             if( curLen > 0 && (*curLoc)[curLen-1] == '\r' )
                 (*curLoc)[--curLen] = '\0';
-            if( **curLoc == '\0' ) {
+            if( **curLoc == '\0' ) {    /* empty line */
                 isFinish = 1;
             }else{
+                if( req->headerCount >= 0 ) {
+                    /* replace colon with '\0' */
+                    colon = strchr(req->headers[req->headerCount], ':');
+                    if( colon != NULL ) {
+                        *colon = '\0';
+                        checkAuthorization(req);
+                    }else{
+                        log_debug("No colon in header line (line ignored): %s",
+                                req->headers[req->headerCount-1]);
+                        free(req->headers[req->headerCount-1]);
+                        --req->headerCount;
+                    }
+                }else
+                    decodeRequestStartLine(req);
+                /* start next header line */
+                ++req->headerCount;
                 req->headers = realloc(req->headers,
                         (req->headerCount+1) * sizeof(char*));
                 req->headers[req->headerCount] = strdup("");
-                ++req->headerCount;
             }
             bol = eol + 1;
         }else{
@@ -147,28 +185,14 @@ static int appendHeaderData(RequestHeader *req, const char *data, unsigned len)
 
 int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
 {
-    int i, offset, oldHeaderCount;
+    int i, offset;
 
-    oldHeaderCount = req->headerCount ? req->headerCount : 1;
-    offset = appendHeaderData(req, data, len);
-    if( req->path == NULL && req->headerCount > 0 )
-        decodeRequestStartLine(req);
-    if( req->loginState == LS_LOGGED_OUT && req->headerCount > oldHeaderCount )
-    {
-        const char *auth = getHeaderVal(req->headers + oldHeaderCount - 1,
-                req->headerCount - oldHeaderCount, "Authorization");
-        if( auth != NULL ) {
-            req->loginState =
-                auth_isClientAuthorized(auth, reqhdr_getMethod(req)) ?
-                    LS_LOGGED_IN : LS_LOGIN_FAIL;
-            log_debug("Authorization: %s", auth);
-        }
-    }
-    if( offset >= 0 ) {
+    if( (offset = appendHeaderData(req, data, len)) >= 0 ) {
         log_debug("request: %s %s", req->request, req->path);
         if( log_isLevel(2) ) {
             for(i = 0; i < req->headerCount; ++i)
-                log_debug("%s", req->headers[i]);
+                log_debug("%s:%s", req->headers[i],
+                        req->headers[i] + strlen(req->headers[i]) + 1);
         }
     }
     return offset;
@@ -179,7 +203,7 @@ void reqhdr_free(RequestHeader *req)
     int i;
 
     free(req->request);
-    for(i = 0; i < req->headerCount; ++i)
+    for(i = 0; i <= req->headerCount; ++i)
         free(req->headers[i]);
     free(req->headers);
     free(req);

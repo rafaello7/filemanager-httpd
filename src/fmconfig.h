@@ -39,6 +39,11 @@ Folder *config_getSubSharesForPath(const char *urlPath);
 char *config_getIndexFile(const char *dir, int *sysErrNo);
 
 
+/* Returns true when the specified path does match some CGI pattern.
+ */
+bool config_isCGI(const char *urlPath);
+
+
 /* Stores in md5sum a MD5 sum of string constructed as concatenation of:
  *      username ":" realm ":" password
  * Returns true on success, false when credentials for the user don't exist.

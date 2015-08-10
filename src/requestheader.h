@@ -40,6 +40,14 @@ const char *reqhdr_getMethod(const RequestHeader*);
 const char *reqhdr_getPath(const RequestHeader*);
 
 
+/* If the idx does exceed the size of header array, returns false.
+ * Otherwise stores in nameBuf and valueBuf the header name and value
+ * and returns true.
+ */
+bool reqhdr_getHeaderAt(const RequestHeader*, unsigned idx,
+        const char **nameBuf, const char **valueBuf);
+
+
 /* Returns value of the specified header; returns NULL when header with the
  * specified name does not exist.
  */

@@ -4,6 +4,7 @@
 #include "fmlog.h"
 #include "auth.h"
 #include "filemanager.h"
+#include "cgiexecutor.h"
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -16,6 +17,7 @@
 struct RequestHandler {
     const RequestHeader *header;
     FileManager *filemgr;
+    CgiExecutor *cgiexe;
     RespBuf *respBuf;
     DataSource *response;
 };
@@ -227,22 +229,21 @@ static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
     return resp;
 }
 
-static RespBuf *processFolderReq(RequestHandler *hdlr)
+static RespBuf *processFolderReq(const RequestHeader *rhdr,
+        FileManager *filemgr)
 {
-    const RequestHeader *rhdr = hdlr->header;
     const char *queryFile = reqhdr_getPath(rhdr);
     RespBuf *resp;
     bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
     int sysErrNo = 0;
 
     if( !strcmp(reqhdr_getMethod(rhdr), "POST") && filemgr_processPost(
-                hdlr->filemgr, rhdr) == PR_REQUIRE_AUTH)
+                filemgr, rhdr) == PR_REQUIRE_AUTH)
     {
         resp = printUnauthorized(queryFile, isHeadReq);
     }else{
         if( reqhdr_isActionAllowed(rhdr, PA_LIST_FOLDER) ) {
-            resp = filemgr_printFolderContents(hdlr->filemgr, rhdr,
-                        &sysErrNo);
+            resp = filemgr_printFolderContents(filemgr, rhdr, &sysErrNo);
             if( resp == NULL ) {
                 resp = printErrorPage(sysErrNo, queryFile, isHeadReq, false);
             }
@@ -258,7 +259,7 @@ static void doProcessRequest(RequestHandler *hdlr)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
-    RespBuf *resp;
+    RespBuf *resp = NULL;
     const RequestHeader *rhdr = hdlr->header;
 
     isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
@@ -310,7 +311,8 @@ static void doProcessRequest(RequestHandler *hdlr)
             if( sysErrNo == 0 ) {
                 if( isFolder ) {
                     hdlr->filemgr = filemgr_new(sysPath);
-                    resp = NULL;
+                }else if( config_isCGI(queryFile) ) {
+                    hdlr->cgiexe = cgiexe_new(rhdr, sysPath);
                 }else{
                     resp = processFileReq(queryFile, sysPath, isHeadReq);
                 }
@@ -332,6 +334,7 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
 
     handler->header = rhdr;
     handler->filemgr = NULL;
+    handler->cgiexe = NULL;
     handler->respBuf = NULL;
     handler->response = NULL;
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
@@ -348,6 +351,8 @@ void reqhdlr_consumeBodyBytes(RequestHandler *hdlr, const char *data,
 {
     if( hdlr->filemgr != NULL ) {
         filemgr_consumeBodyBytes(hdlr->filemgr, data, len);
+    }else if( hdlr->cgiexe != NULL ) {
+        cgiexe_consumeBodyBytes(hdlr->cgiexe, data, len);
     }
 }
 
@@ -357,7 +362,16 @@ void reqhdlr_bodyBytesComplete(RequestHandler *hdlr)
     int isHeadReq = ! strcmp(meth, "HEAD");
 
     if( hdlr->respBuf == NULL ) {
-        hdlr->respBuf = processFolderReq(hdlr);
+        if( hdlr->filemgr != NULL )
+            hdlr->respBuf = processFolderReq(hdlr->header, hdlr->filemgr);
+        else if( hdlr->cgiexe != NULL ) {
+            hdlr->respBuf = cgiexe_bodyBytesComplete(hdlr->cgiexe,
+                    hdlr->header);
+        }else
+            hdlr->respBuf = printMesgPage(HTTP_500,
+                    "reqhandler: unspecified handler",
+                    reqhdr_getPath(hdlr->header), isHeadReq, false);
+
     }
     resp_appendHeader(hdlr->respBuf, "Connection", "close");
     resp_appendHeader(hdlr->respBuf, "Server", "filemanager-httpd");
@@ -374,6 +388,7 @@ void reqhdlr_free(RequestHandler *hdlr)
 {
     if( hdlr != NULL ) {
         filemgr_free(hdlr->filemgr);
+        cgiexe_free(hdlr->cgiexe);
         ds_free(hdlr->response);
         free(hdlr);
     }

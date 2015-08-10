@@ -158,7 +158,7 @@ DataSource *resp_finish(RespBuf *resp, bool onlyHead)
         resp->fileDesc = -1;
     }
     if( log_isLevel(2) )
-        log_debug("response: %s", mb_data(resp->header));
+        log_debug("==> response: %s", mb_data(resp->header));
     else
         log_debug("response: %s", resp->statusStr);
     mb_appendStr(resp->header, "\r\n");
