@@ -5,6 +5,7 @@
 #include "folder.h"
 #include "auth.h"
 #include "fmlog.h"
+#include "multipartdata.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,7 +19,7 @@
 
 struct FileManager {
     char *sysPath;
-    MemBuf *body;
+    MultipartData *body;
     char *opErrorMsg;
 };
 
@@ -118,54 +119,6 @@ const char *filemgr_getLoginForm(void)
     return response_login_button;
 }
 
-struct content_part {
-    DataChunk name;
-    DataChunk filename;
-    DataChunk data;
-};
-
-static int parse_part(const DataChunk *part, struct content_part *res)
-{
-    DataChunk contentDisp, name, value;
-
-    res->data = *part;
-    dch_clear(&contentDisp);
-    while( res->data.len >= 2 && ! dch_startsWithStr(&res->data, "\r\n") ) {
-        if( dch_startsWithStr(&res->data, "Content-Disposition:") ) {
-            if( ! dch_extractTillStr(&res->data, &contentDisp, "\r\n") )
-                return 0;
-        }else{
-            if( ! dch_shiftAfterStr(&res->data, "\r\n") )
-                return 0;
-        }
-    }
-    if( ! dch_shift(&res->data, 2) )
-        return 0;
-    if( contentDisp.data == NULL ) {
-        log_debug("no Content-Disposition in part");
-        return 0;
-    }
-    /* Content-Disposition: form-data; name="file"; filename="Test.xml" */
-    dch_clear(&res->name);
-    dch_clear(&res->filename);
-    while( dch_shiftAfterChr(&contentDisp, ';') ) {
-        dch_skipLeading(&contentDisp, " ");
-        if( ! dch_extractTillStr(&contentDisp, &name, "=") )
-            return 0;
-        if( ! dch_startsWithStr(&contentDisp, "\"") )
-            return 0;
-        dch_shift(&contentDisp, 1);
-        if( ! dch_extractTillStr(&contentDisp, &value, "\"") )
-            return 0;
-        if( dch_equalsStr(&name, "name") ) {
-            res->name = value;
-        }else if( dch_equalsStr(&name, "filename") ) {
-            res->filename = value;
-        }
-    }
-    return res->name.data != NULL;
-}
-
 static MemBuf *fmtError(int sysErrno, const char *str1, const char *str2, ...)
 {
     va_list args;
@@ -188,81 +141,57 @@ static MemBuf *fmtError(int sysErrno, const char *str1, const char *str2, ...)
 }
 
 
-static MemBuf *upload_file(const char *sysPath, const DataChunk *dchfname,
-        const DataChunk *data)
+static MemBuf *upload_file(ContentPart *partFile)
 {
-    FILE *fp;
-    char *fname, *fname_real;
     MemBuf *res = NULL;
+    const char *fname = cpart_getFileName(partFile);
+    int sysErrNo;
 
-    fname = dch_dupToStr(dchfname);
-    log_debug("upload_file: adding file=%s len=%u\n", fname, data->len);
-    if( dch_equalsStr(dchfname, "") ) {
+    if( fname == NULL ) {
         res = fmtError(0, "unable to add file with empty name", NULL);
     }else{
-        fname_real = format_path(sysPath, fname);
-        if( access(fname_real, F_OK) == 0 ) {
-            res = fmtError(0, "file ", fname, " already exists", NULL);
-        }else{
-            if( (fp = fopen(fname_real, "w")) == NULL ) {
-                res = fmtError(errno, "unable to save ", fname, NULL);
-            }else{
-                if( data->len && fwrite(data->data, data->len, 1, fp) != 1 ) {
-                    res = fmtError(errno, "error during save ", fname, NULL);
-                    unlink(fname_real);
-                }
-                fclose(fp);
-            }
+        log_debug("upload_file: adding file=%s\n", fname);
+        if( ! cpart_finishUpload(partFile, &sysErrNo) ) {
+            res = fmtError(sysErrNo, "unable to save ", fname, NULL);
         }
-        free(fname_real);
     }
-    free(fname);
     return res;
 }
 
-static MemBuf *rename_file(const char *sysPath, const DataChunk *dch_old_name,
-        const DataChunk *dch_new_dir, const DataChunk *dch_new_name)
+static MemBuf *rename_file(const char *sysPath, const char *oldName,
+        const char *newDir, const char *newName)
 {
-    char *old_name, *new_dir, *new_name, *oldpath, *newUrlPath, *newSysPath;
+    char *oldpath, *newUrlPath, *newSysPath;
     MemBuf *res = NULL;
 
-    if( dch_old_name->data == NULL || dch_new_dir->data == NULL ||
-            dch_new_name->data == NULL )
-    {
+    if( oldName == NULL || newDir == NULL || newName == NULL ) {
         res = fmtError(0, "not all parameters provided for rename", NULL);
     }else{
-        old_name = dch_dupToStr(dch_old_name);
-        new_dir = dch_dupToStr(dch_new_dir);
-        new_name = dch_dupToStr(dch_new_name);
-        oldpath = format_path(sysPath, old_name);
-        newUrlPath = format_path(new_dir, new_name);
+        oldpath = format_path(sysPath, oldName);
+        newUrlPath = format_path(newDir, newName);
         newSysPath = config_getSysPathForUrlPath(newUrlPath);
         log_debug("rename_file: %s -> %s", oldpath, newSysPath);
         if( rename(oldpath, newSysPath) != 0 ) {
-            res = fmtError(errno, old_name, " rename failed", NULL);
+            res = fmtError(errno, oldName, " rename failed", NULL);
         }
         free(oldpath);
         free(newSysPath);
         free(newUrlPath);
-        free(new_name);
-        free(new_dir);
-        free(old_name);
     }
     return res;
 }
 
-static MemBuf *create_newdir(const char *sysPath, const DataChunk *dchNewDir)
+static MemBuf *create_newdir(const char *sysPath, const char *newDir)
 {
-    char *path, *newDir;
+    char *path;
     MemBuf *res = NULL;
 
-    if( dchNewDir->len == 0 || dchNewDir->data[0] == '\0' ) {
+    if( newDir == NULL || newDir[0] == '\0' ) {
         res = fmtError(0, "unable to create directory with empty name", NULL);
-    }else if( dch_indexOfStr(dchNewDir, "/") >= 0 ) {
+    }else if( strchr(newDir, '/') != NULL ) {
         res = fmtError(0, "directory name cannot contain slashes"
                 "&emsp;&ndash;&emsp;\"/\"", NULL);
     }else{
-        newDir = dch_dupToStr(dchNewDir);
         path = format_path(sysPath, newDir);
         log_debug("create dir: %s", path);
         if( mkdir(path, S_IRWXU|S_IRWXG|S_IRWXO) != 0 ) {
@@ -270,22 +199,20 @@ static MemBuf *create_newdir(const char *sysPath, const DataChunk *dchNewDir)
                     "\"", NULL);
         }
         free(path);
-        free(newDir);
     }
     return res;
 }
 
-static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
+static MemBuf *delete_file(const char *sysPath, const char *fname)
 {
-    char *path, *fname;
+    char *path;
     struct stat st;
     MemBuf *res = NULL;
     int opRes;
 
-    if( dch_fname->len == 0 || dch_fname->data[0] == '\0' ) {
+    if( fname == NULL || fname[0] == '\0' ) {
         res = fmtError(0, "unable to remove file with empty name", NULL);
     }else{
-        fname = dch_dupToStr(dch_fname);
         path = format_path(sysPath, fname);
         log_debug("delete: %s", path);
         if( stat(path, &st) == 0 ) {
@@ -301,7 +228,6 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
             res = fmtError(errno, fname, NULL);
         }
         free(path);
-        free(fname);
     }
     return res;
 }
@@ -309,113 +235,38 @@ static MemBuf *delete_file(const char *sysPath, const DataChunk *dch_fname)
 enum PostingResult filemgr_processPost(FileManager *filemgr,
         const RequestHeader *rhdr)
 {
-    DataChunk bodyData, partData;
-    struct content_part part, file_part, newdir_part, newname_part;
-    enum {
-        RT_UNKNOWN,
-        RT_LOGIN,
-        RT_MODIFY_BEG,  /* begin of requests requiring PA_MODIFY */
-        RT_UPLOAD = RT_MODIFY_BEG,
-        RT_RENAME,
-        RT_NEWDIR,
-        RT_DELETE
-    } requestType = RT_UNKNOWN;
+    ContentPart *file_part, *newdir_part, *newname_part;
     MemBuf *opErr = NULL;
-    const char *ct = reqhdr_getHeaderVal(rhdr, "Content-Type");
     bool requireAuth = false;
 
-    dch_clear(&file_part.name);
-    dch_clear(&newdir_part.name);
-    dch_clear(&newname_part.name);
-    if( mb_dataLen(filemgr->body) == 0 ) {
-        opErr = fmtError(0, "bad content length: 0", NULL);
-        goto err;
-    }
-    if( ct == NULL ) {
-        opErr = fmtError(0, "unspecified content type", NULL);
-        goto err;
-    }
-    if( memcmp(ct, "multipart/form-data; boundary=", 30) ) {
-        opErr = fmtError(0, "bad content type: ", ct, NULL);
-        goto err;
-    }
-    ct += 30;
-    /*log_debug("boundary: %s", ct);*/
-    dch_init(&bodyData, mb_data(filemgr->body), mb_dataLen(filemgr->body));
-    /* skip first boundary */
-    if( ! dch_extractTillStr2(&bodyData, &partData, "--", ct) ) {
-        opErr = fmtError(0, "malformed form data", NULL);
-        goto err;
-    }
-    /* check string after boundary; string after last boundary is "--\r\n" */
-    while( dch_startsWithStr(&bodyData, "\r\n") ) {
-        dch_shift(&bodyData, 2);
-        if( ! dch_extractTillStr2(&bodyData, &partData, "\r\n--", ct) )
-            break;
-        if( parse_part(&partData, &part) ) {
-            /*
-            if( part.filename.data != NULL )
-                log_debug("part: {name=%.*s, filename=%.*s, datalen=%u}",
-                        part.name.len, part.name.data,
-                        part.filename.len, part.filename.data,
-                        part.data.len);
-            else
-                log_debug("part: {name=%.*s, datalen=%u}",
-                        part.name.len, part.name.data, part.data.len);
-            */
-            if( dch_equalsStr(&part.name, "do_upload") ) {
-                requestType = RT_UPLOAD;
-            }else if( dch_equalsStr(&part.name, "do_rename") ) {
-                requestType = RT_RENAME;
-            }else if( dch_equalsStr(&part.name, "do_newdir") ) {
-                requestType = RT_NEWDIR;
-            }else if( dch_equalsStr(&part.name, "do_delete") ) {
-                requestType = RT_DELETE;
-            }else if( dch_equalsStr(&part.name, "do_login") ) {
-                requestType = RT_LOGIN;
-            }else if( dch_equalsStr(&part.name, "file") ) {
-                file_part = part;
-            }else if( dch_equalsStr(&part.name, "new_dir") ) {
-                newdir_part = part;
-            }else if( dch_equalsStr(&part.name, "new_name") ) {
-                newname_part = part;
-            }
-        }else{
-            opErr = fmtError(0, "malformed form data", NULL);
-            goto err;
-        }
-        if(  dch_startsWithStr(&bodyData, "--\r\n") )
-            break;
-    }
-    if( requestType == RT_LOGIN ) {
+    if( filemgr->body == NULL )
+        return PR_PROCESSED;
+
+    if( mpdata_containsPartWithName(filemgr->body, "do_login") ) {
         requireAuth = reqhdr_getLoginState(rhdr) != LS_LOGGED_IN;
-    }else if( requestType >= RT_MODIFY_BEG &&
-            config_isActionAvailable(PA_MODIFY) )
-    {
+    }else if( config_isActionAvailable(PA_MODIFY) ) {
         requireAuth = !reqhdr_isActionAllowed(rhdr, PA_MODIFY);
         if( ! requireAuth ) {
-            switch( requestType ) {
-            case RT_UPLOAD:
-                opErr = upload_file(filemgr->sysPath, &file_part.filename,
-                        &file_part.data);
-                break;
-            case RT_RENAME:
-                opErr = rename_file(filemgr->sysPath, &file_part.data,
-                        &newdir_part.data, &newname_part.data);
-                break;
-            case RT_NEWDIR:
-                opErr = create_newdir(filemgr->sysPath, &newdir_part.data);
-                break;
-            case RT_DELETE:
-                opErr = delete_file(filemgr->sysPath, &file_part.data);
-                break;
-            default:
-                break;
+            file_part = mpdata_getPartByName(filemgr->body, "file");
+            newdir_part = mpdata_getPartByName(filemgr->body, "new_dir");
+            newname_part = mpdata_getPartByName(filemgr->body, "new_name");
+            if( mpdata_containsPartWithName(filemgr->body, "do_upload") ) {
+                opErr = upload_file(file_part);
+            }else if(mpdata_containsPartWithName(filemgr->body, "do_rename")) {
+                opErr = rename_file(filemgr->sysPath,
+                        cpart_getDataStr(file_part),
+                        cpart_getDataStr(newdir_part), 
+                        cpart_getDataStr(newname_part));
+            }else if(mpdata_containsPartWithName(filemgr->body, "do_newdir")) {
+                opErr = create_newdir(filemgr->sysPath,
+                        cpart_getDataStr(newdir_part));
+            }else if(mpdata_containsPartWithName(filemgr->body, "do_delete")) {
+                opErr = delete_file(filemgr->sysPath,
+                        cpart_getDataStr(file_part));
             }
         }
     }else
         opErr = fmtError(0, "unrecognized request", NULL);
-err:
     filemgr->opErrorMsg = mb_unbox_free(opErr);
     return requireAuth ? PR_REQUIRE_AUTH : PR_PROCESSED;
 }
@@ -600,27 +451,63 @@ RespBuf *filemgr_printFolderContents(const FileManager *filemgr,
     return resp;
 }
 
-FileManager *filemgr_new(const char *sysPath)
+FileManager *filemgr_new(const char *sysPath, const RequestHeader *rhdr)
 {
     FileManager *filemgr = malloc(sizeof(FileManager));
+    DataChunk dchContentType, dchName, dchValue;
+    MemBuf *opErr = NULL;
+    const char *contentType = reqhdr_getHeaderVal(rhdr, "Content-Type");
+    char *boundaryDelimiter = NULL;
 
     filemgr->sysPath = sysPath ? strdup(sysPath) : NULL;
-    filemgr->body = mb_new();
-    filemgr->opErrorMsg = NULL;
+    if( contentType != NULL ) {
+        dch_initWithStr(&dchContentType, contentType);
+        dch_extractTillStrStripWS(&dchContentType, &dchName, ";");
+        if( ! dch_equalsStr(&dchName, "multipart/form-data") ) {
+            opErr = fmtError(0, "bad content type: ", contentType, NULL);
+        }else{
+            while( dchContentType.len ) {
+                if( !dch_extractTillStrStripWS(&dchContentType, &dchName, "="))
+                    break;
+                if( dch_startsWithStr(&dchContentType, "\"") ) {
+                    dch_shift(&dchContentType, 1);
+                    if( ! dch_extractTillStr(&dchContentType, &dchValue, "\""))
+                        break;
+                }else{
+                    dch_init(&dchValue, dchContentType.data,
+                            dch_endOfCSpan(&dchContentType, 0, ';'));
+                    dch_trimWS(&dchValue);
+                }
+                if( dch_equalsStrIgnoreCase(&dchName, "boundary") ) {
+                    boundaryDelimiter = dch_dupToStr(&dchValue);
+                }
+                if( dch_shiftAfterChr(&dchContentType, ';') )
+                    dch_skipLeading(&dchContentType, " ");
+            }
+        }
+    }
+    if( boundaryDelimiter != NULL ) {
+        filemgr->body = mpdata_new(boundaryDelimiter,
+                reqhdr_isActionAllowed(rhdr, PA_MODIFY) ? sysPath : NULL);
+        free(boundaryDelimiter);
+    }else
+        filemgr->body = NULL;
+    filemgr->opErrorMsg = mb_unbox_free(opErr);
     return filemgr;
 }
 
 void filemgr_consumeBodyBytes(FileManager *filemgr, const char *data,
         unsigned len)
 {
-    mb_appendData(filemgr->body, data, len);
+    if( filemgr->body != NULL )
+        mpdata_appendData(filemgr->body, data, len);
 }
 
 void filemgr_free(FileManager *filemgr)
 {
     if( filemgr != NULL ) {
         free(filemgr->sysPath);
-        mb_free(filemgr->body);
+        mpdata_free(filemgr->body, false);
         free(filemgr->opErrorMsg);
         free(filemgr);
     }

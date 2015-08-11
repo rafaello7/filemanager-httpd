@@ -13,7 +13,7 @@ enum PostingResult {
 };
 
 
-FileManager *filemgr_new(const char *sysPath);
+FileManager *filemgr_new(const char *sysPath, const RequestHeader*);
 
 
 void filemgr_consumeBodyBytes(FileManager*, const char *data, unsigned len);

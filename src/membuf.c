@@ -78,6 +78,12 @@ bool mb_endsWithStr(const MemBuf *mb, const char *str)
     return mb->dataLen >= len && !memcmp(mb->data + mb->dataLen-len, str, len);
 }
 
+void mb_ensureEndsWithSlash(MemBuf *mb)
+{
+    if( mb->dataLen == 0 || mb->data[mb->dataLen] != '/' )
+        mb_appendData(mb, "/", 1);
+}
+
 void mb_resize(MemBuf *mb, unsigned newSize)
 {
     mb->dataLen = newSize;

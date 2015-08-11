@@ -1,6 +1,6 @@
 #include <stdbool.h>
 #include "cgiexecutor.h"
-#include "cgirespheader.h"
+#include "dataheader.h"
 #include "fmlog.h"
 #include <stdlib.h>
 #include <unistd.h>
@@ -123,15 +123,16 @@ RespBuf *cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
     RespBuf *resp = NULL;
     char buf[4096];
     int offset, rd;
-    CgiRespHeader *rhdr;
+    DataHeader *hdr;
     const char *headerVal;
 
     close(cgiexe->outFd);
     cgiexe->outFd = -1;
-    rhdr = cgirhdr_new();
+    hdr = datahdr_new();
     while( (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
         offset = 0;
-        if( resp == NULL && (offset = cgirhdr_appendData(rhdr, buf, rd)) >= 0)
+        if( resp == NULL && (offset = datahdr_appendData(hdr, buf, rd,
+                        "CGI response")) >= 0)
             resp = resp_new(HTTP_200_OK);
         if( resp != NULL )
             resp_appendData(resp, buf + offset, rd - offset);
@@ -140,10 +141,10 @@ RespBuf *cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
     cgiexe->inFd = -1;
     if( resp == NULL ) /* incomplete header in CGI response */
         resp = resp_new(HTTP_200_OK);
-    headerVal = cgirhdr_getHeaderVal(rhdr, "Content-Type");
+    headerVal = datahdr_getHeaderVal(hdr, "Content-Type");
     resp_appendHeader(resp, "Content-Type",
             headerVal ? headerVal : "text/plain");
-    cgirhdr_free(rhdr);
+    datahdr_free(hdr);
     return resp;
 }
 

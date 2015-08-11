@@ -51,6 +51,12 @@ void mb_appendChunk(MemBuf*, const DataChunk*);
 bool mb_endsWithStr(const MemBuf*, const char*);
 
 
+/* Adds slash character ("/") at end of the buffer contents if does not
+ * end with it.
+ */
+void mb_ensureEndsWithSlash(MemBuf*);
+
+
 /* Resizes the buffer. Current buffer contents is preserved.
  * New data is uninitialized.
  */

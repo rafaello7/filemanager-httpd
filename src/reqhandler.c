@@ -308,7 +308,7 @@ static void doProcessRequest(RequestHandler *hdlr, const RequestHeader *rhdr)
             }
             if( sysErrNo == 0 ) {
                 if( isFolder ) {
-                    hdlr->filemgr = filemgr_new(sysPath);
+                    hdlr->filemgr = filemgr_new(sysPath, rhdr);
                 }else if( config_isCGI(queryFile) ) {
                     hdlr->cgiexe = cgiexe_new(rhdr, sysPath);
                 }else{
