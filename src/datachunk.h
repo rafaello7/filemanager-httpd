@@ -41,13 +41,6 @@ bool dch_shift(DataChunk*, unsigned size);
 bool dch_shiftAfterChr(DataChunk*, char);
 
 
-/* Moves chunk begin after first occurrence of the specified string.
- * Returns true on success, false when the chunk does not contain
- * such string.
- */
-bool dch_shiftAfterStr(DataChunk*, const char*);
-
-
 /* Moves begin of data chunk forward, skipping characters specified in str
  */
 void dch_skipLeading(DataChunk*, const char *str);
@@ -68,28 +61,36 @@ void dch_trimWS(DataChunk*);
 void dch_dirNameOf(const DataChunk *fileName, DataChunk *dirName);
 
 
+/* The paramLine should contain a list of parameters in format name=value
+ * separated by delimiter. The parameter value may be with or without
+ * surrounding double quotes. Optionally white spaces may appear around the
+ * delimiter. The function stores the first parameter name and value in
+ * nameBuf and valueBuf respectively and advances the paramLine to start of
+ * the next parameter.
+ * The parameter value is stored without surrounding quotes.
+ *
+ * Returns true on success, false when the paramLine does not contain
+ * any parameter or cannot be recognized.
+ */
+bool dch_extractParam(DataChunk *paramLine, DataChunk *nameBuf,
+        DataChunk *valueBuf, char delimiter);
+
+
 /* Extracts sub-chunk of data, which starts at dch begin and continues to
- * (but not including the) first occurrence of the specified string.
+ * (but not including the) first occurrence of the specified delimiter.
  * The dch begin is shifted after end of the found string.
  * If the string does not appear in dch, the subChunk is set to whole dch and
  * dch is set to empty.
  * Returns true when the string was found, false otherwise.
  */
-bool dch_extractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str);
+bool dch_extractTillChr(DataChunk *dch, DataChunk *subChunk, char delimiter);
 
 
-/* Like dch_extractTillStr, but the ending string is constructed as
- * concatenation of two strings passed as parameters.
+/* Like dch_extractTillChr, but additionally white spaces surrounding the
+ * delimiter are also removed from resulting chunks.
  */
-bool dch_extractTillStr2(DataChunk *dch, DataChunk *subChunk,
-        const char *str1, const char *str2);
-
-
-/* Like dch_extractTillStr, but additionally white spaces surrounding the
- * string are also removed from resulting chunks.
- */
-bool dch_extractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
-        const char *str);
+bool dch_extractTillChrStripWS(DataChunk *dch, DataChunk *subChunk,
+        char delimiter);
 
 
 /* Trims leading white spaces from dch and then extracts sub-chunk of data,
@@ -116,12 +117,6 @@ bool dch_equalsStrIgnoreCase(const DataChunk*, const char*);
  */
 bool dch_startsWithStr(const DataChunk*, const char*);
 bool dch_startsWithStrIgnoreCase(const DataChunk*, const char*);
-
-
-/* Returns index of first occurrence of the specified string within data chunk.
- * Returns -1 when the data chunk does not contain the string.
- */
-int dch_indexOfStr(const DataChunk*, const char*);
 
 
 /* Returns index of end of segment starting at idxFrom and consisting entirely

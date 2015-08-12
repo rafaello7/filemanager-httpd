@@ -72,7 +72,7 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
             dch_trimWS(&dchValue);
             if( dchValue.len == 0 || *dchValue.data == '#' )
                 continue;
-            if( dch_extractTillStrStripWS(&dchValue, &dchName, "=") ) {
+            if( dch_extractTillChrStripWS(&dchValue, &dchName, '=') ) {
                 if( dch_startsWithStr(&dchName, "/") ) {
                     gShares = realloc(gShares,
                             (*shareCount+1) * sizeof(Share));
@@ -264,7 +264,7 @@ Folder *config_getSubSharesForPath(const char *urlPath)
             dch_initWithStr(&dchPath, cur->urlpath + pathLen + 1);
             dch_skipLeading(&dchPath, "/");
             if( dchPath.len > 0 ) {
-                dch_extractTillStr(&dchPath, &ent, "/");
+                dch_extractTillChr(&dchPath, &ent, '/');
                 if( folder == NULL )
                     folder = folder_new();
                 /* avoid duplicates */

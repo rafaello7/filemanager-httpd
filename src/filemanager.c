@@ -336,7 +336,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 isModifiable ? "+" : "&sdot;", "</span></td>\n"
                  "<td><a style=\"white-space: pre\" href=\"", NULL);
         dch_dirNameOf(&dchUrlPath, &dchDirName);
-        resp_appendChunkEscapeHtml(resp, &dchDirName);
+        if( ! dch_equalsStr(&dchDirName, "/") )
+            resp_appendChunkEscapeHtml(resp, &dchDirName);
         resp_appendStr(resp, "/\"> .. </a></td>\n<td></td>\n</tr>\n");
     }
     /* entry list */
@@ -468,27 +469,13 @@ FileManager *filemgr_new(const char *sysPath, const RequestHeader *rhdr)
     filemgr->sysPath = sysPath ? strdup(sysPath) : NULL;
     if( contentType != NULL ) {
         dch_initWithStr(&dchContentType, contentType);
-        dch_extractTillStrStripWS(&dchContentType, &dchName, ";");
+        dch_extractTillChrStripWS(&dchContentType, &dchName, ';');
         if( ! dch_equalsStr(&dchName, "multipart/form-data") ) {
             opErr = fmtError(0, "bad content type: ", contentType, NULL);
         }else{
-            while( dchContentType.len ) {
-                if( !dch_extractTillStrStripWS(&dchContentType, &dchName, "="))
-                    break;
-                if( dch_startsWithStr(&dchContentType, "\"") ) {
-                    dch_shift(&dchContentType, 1);
-                    if( ! dch_extractTillStr(&dchContentType, &dchValue, "\""))
-                        break;
-                }else{
-                    dch_init(&dchValue, dchContentType.data,
-                            dch_endOfCSpan(&dchContentType, 0, ';'));
-                    dch_trimWS(&dchValue);
-                }
-                if( dch_equalsStrIgnoreCase(&dchName, "boundary") ) {
+            while(dch_extractParam(&dchContentType, &dchName, &dchValue, ';')) {
+                if( dch_equalsStrIgnoreCase(&dchName, "boundary") )
                     boundaryDelimiter = dch_dupToStr(&dchValue);
-                }
-                if( dch_shiftAfterChr(&dchContentType, ';') )
-                    dch_skipLeading(&dchContentType, " ");
             }
         }
     }

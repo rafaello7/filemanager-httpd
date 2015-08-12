@@ -7,24 +7,6 @@
 static const char gWhiteSpaces[] = " \t\n";
 
 
-static bool indexOfStr(const DataChunk *dch, const char *str,
-        int *idxBeg, int *idxEnd)
-{
-    const char *data = dch->data;
-    int len = strlen(str);
-
-    while( data - dch->data + len <= dch->len && memcmp(data, str, len) )
-        ++data;
-    if( data - dch->data + len <= dch->len ) {
-        if( idxBeg )
-            *idxBeg = data - dch->data;
-        if( idxEnd )
-            *idxEnd = data - dch->data + len;
-        return true;
-    }
-    return false;
-}
-
 void dch_clear(DataChunk *dch)
 {
     dch->data = NULL;
@@ -60,17 +42,6 @@ bool dch_shiftAfterChr(DataChunk *dch, char c)
         return false;
     dch->len -= dataEnd - dch->data + 1;
     dch->data = dataEnd + 1;
-    return true;
-}
-
-bool dch_shiftAfterStr(DataChunk *dch, const char *str)
-{
-    int idxEnd;
-
-    if( ! indexOfStr(dch, str, NULL, &idxEnd ) )
-        return false;
-    dch->data += idxEnd;
-    dch->len -= idxEnd;
     return true;
 }
 
@@ -111,52 +82,48 @@ void dch_dirNameOf(const DataChunk *fileName, DataChunk *dirName)
     dch_init(dirName, fileName->data, len);
 }
 
-bool dch_extractTillStr(DataChunk *dch, DataChunk *subChunk, const char *str)
+bool dch_extractParam(DataChunk *paramLine, DataChunk *nameBuf,
+        DataChunk *valueBuf, char delimiter)
 {
-    int idxBeg, idxEnd;
+    bool res;
 
-    if( indexOfStr(dch, str, &idxBeg, &idxEnd ) ) {
-        subChunk->data = dch->data;
-        subChunk->len = idxBeg;
-        dch->data += idxEnd;
-        dch->len -= idxEnd;
-        return true;
-    }
-    *subChunk = *dch;
-    dch_clear(dch);
-    return false;
-}
-
-bool dch_extractTillStr2(DataChunk *dch, DataChunk *subChunk,
-        const char *str1, const char *str2)
-{
-    int idxBeg, idxEnd, len1 = strlen(str1);
-    DataChunk dch2;
-
-    if( dch->len >= len1 ) {
-        dch2.data = dch->data + len1;
-        dch2.len = dch->len - len1;
-        while( indexOfStr(&dch2, str2, &idxBeg, &idxEnd ) ) {
-            if( ! memcmp(dch2.data + idxBeg - len1, str1, len1) ) {
-                subChunk->data = dch->data;
-                subChunk->len = dch2.data - dch->data + idxBeg - len1;
-                dch->data = dch2.data + idxEnd;
-                dch->len = dch2.len - idxEnd;
-                return true;
-            }
-            if( ! dch_shift(&dch2, idxBeg+1) )
-                break;
+    if( (res = dch_extractTillChr(paramLine, nameBuf, '=')) ) {
+        dch_trimWS(nameBuf);
+        dch_skipLeading(paramLine, gWhiteSpaces);
+        if( paramLine->len > 0 && paramLine->data[0] == '"' ) {
+            dch_shift(paramLine, 1);
+            dch_extractTillChr(paramLine, valueBuf, '\"');
+            dch_shiftAfterChr(paramLine, delimiter);
+        }else{
+            dch_extractTillChr(paramLine, valueBuf, delimiter);
+            dch_trimTrailing(valueBuf, gWhiteSpaces);
         }
     }
-    *subChunk = *dch;
-    dch_clear(dch);
-    return false;
+    return res;
 }
 
-bool dch_extractTillStrStripWS(DataChunk *dch, DataChunk *subChunk,
-        const char *str)
+bool dch_extractTillChr(DataChunk *dch, DataChunk *subChunk, char delimiter)
 {
-    bool res = dch_extractTillStr(dch, subChunk, str);
+    const char *delimPos;
+    bool res;
+
+    delimPos = memchr(dch->data, delimiter, dch->len);
+    if( (res = delimPos != NULL) ) {
+        subChunk->data = dch->data;
+        subChunk->len = delimPos - dch->data;
+        dch->data = delimPos + 1;
+        dch->len -= subChunk->len + 1;
+    }else{
+        *subChunk = *dch;
+        dch_clear(dch);
+    }
+    return res;
+}
+
+bool dch_extractTillChrStripWS(DataChunk *dch, DataChunk *subChunk,
+        char delimiter)
+{
+    bool res = dch_extractTillChr(dch, subChunk, delimiter);
 
     if( res ) {
         dch_skipLeading(dch, gWhiteSpaces);
@@ -210,13 +177,6 @@ bool dch_startsWithStrIgnoreCase(const DataChunk *dch, const char *str)
     int len = strlen(str);
 
     return dch->len >= len && !strncasecmp(dch->data, str, len);
-}
-
-int dch_indexOfStr(const DataChunk *dch, const char *str)
-{
-    int idxBeg;
-
-    return indexOfStr(dch, str, &idxBeg, NULL) ? idxBeg : -1;
 }
 
 unsigned dch_endOfSpan(const DataChunk *dch, unsigned idxFrom, char c)

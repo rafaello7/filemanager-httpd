@@ -58,14 +58,7 @@ bool auth_isClientAuthorized(const char *authorization,
     dch_clear(&dchResponse);
     dch_clear(&dchNc);
     dch_clear(&dchCNonce);
-    while( dch_extractTillStr(&dchLine, &dchName, "=") ) {
-        if( dch_startsWithStr(&dchLine, "\"") ) {
-            dch_shift(&dchLine, 1);
-            dch_extractTillStr(&dchLine, &dchValue, "\"");
-            dch_skipLeading(&dchLine, ", ");
-        }else{
-            dch_extractTillStrStripWS(&dchLine, &dchValue, ",");
-        }
+    while( dch_extractParam(&dchLine, &dchName, &dchValue, ',') ) {
         if( dch_equalsStr(&dchName, "username") )
             dchUsername = dchValue;
         else if( dch_equalsStr(&dchName, "realm") ) {

@@ -49,23 +49,15 @@ void cpart_appendData(ContentPart *cpart, const char *data, unsigned len)
         /* Content-Disposition: form-data; name="file"; filename="Test.xml" */
         if( contentDisp != NULL ) {
             dch_initWithStr(&dchContentDisp, contentDisp);
-            while( dch_shiftAfterChr(&dchContentDisp, ';') ) {
-                dch_skipLeading(&dchContentDisp, " ");
-                if( !dch_extractTillStrStripWS(&dchContentDisp, &dchName, "="))
-                    break;
-                if( dch_startsWithStr(&dchContentDisp, "\"") ) {
-                    dch_shift(&dchContentDisp, 1);
-                    if( ! dch_extractTillStr(&dchContentDisp, &dchValue, "\""))
-                        break;
-                }else{
-                    dch_init(&dchValue, dchContentDisp.data,
-                            dch_endOfCSpan(&dchContentDisp, 0, ';'));
-                    dch_trimWS(&dchValue);
-                }
-                if( dch_equalsStrIgnoreCase(&dchName, "name") ) {
-                    cpart->name = dch_dupToStr(&dchValue);
-                }else if( dch_equalsStrIgnoreCase(&dchName, "filename") ) {
-                    cpart->fileName = dch_dupToStr(&dchValue);
+            if( dch_shiftAfterChr(&dchContentDisp, ';') ) {
+                while( dch_extractParam(&dchContentDisp,
+                            &dchName, &dchValue, ';'))
+                {
+                    if( dch_equalsStrIgnoreCase(&dchName, "name") ) {
+                        cpart->name = dch_dupToStr(&dchValue);
+                    }else if( dch_equalsStrIgnoreCase(&dchName, "filename") ) {
+                        cpart->fileName = dch_dupToStr(&dchValue);
+                    }
                 }
             }
         }else{
