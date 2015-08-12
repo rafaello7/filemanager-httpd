@@ -85,7 +85,7 @@ static void mainloop(void)
         while( i < connCount ) {
             conn = connections + i;
             if( FD_ISSET(conn->fd, &readFds) ) {
-                while( (rd = read(conn->fd, buf, sizeof(buf)-1)) > 0 &&
+                while( (rd = read(conn->fd, buf, sizeof(buf))) > 0 &&
                         (wr = req_appendData(conn->request, buf, rd)) < 0 )
                     ;
                 if( rd < 0 ) {

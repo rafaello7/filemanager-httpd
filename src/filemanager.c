@@ -147,14 +147,20 @@ static MemBuf *upload_file(ContentPart *partFile)
     const char *fname = cpart_getFileName(partFile);
     int sysErrNo;
 
-    if( fname == NULL ) {
-        res = fmtError(0, "unable to add file with empty name", NULL);
-    }else{
-        log_debug("upload_file: adding file=%s\n", fname);
-        if( ! cpart_finishUpload(partFile, &sysErrNo) ) {
+    if( fname != NULL ) {
+        const char *pathName = cpart_getFilePathName(partFile);
+        if( cpart_finishUpload(partFile, &sysErrNo) ) {
+            log_debug("upload: added file %s", pathName);
+        }else{
+            if( pathName != NULL )
+                log_debug("upload: failed to create %s, errno=%d (%s)",
+                        pathName, sysErrNo, strerror(sysErrNo));
+            else
+                log_debug("upload: no target dir for %s", fname);
             res = fmtError(sysErrNo, "unable to save ", fname, NULL);
         }
-    }
+    }else
+        res = fmtError(0, "unable to add file with empty name", NULL);
     return res;
 }
 
@@ -507,7 +513,7 @@ void filemgr_free(FileManager *filemgr)
 {
     if( filemgr != NULL ) {
         free(filemgr->sysPath);
-        mpdata_free(filemgr->body, false);
+        mpdata_free(filemgr->body);
         free(filemgr->opErrorMsg);
         free(filemgr);
     }

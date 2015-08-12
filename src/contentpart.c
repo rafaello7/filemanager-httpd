@@ -11,12 +11,12 @@
 
 struct ContentPart {
     DataHeader *header;
-    MemBuf *filePathName;
-    char *name;
-    char *fileName;
-    int fileDesc;
-    int sysErrNo;
-    MemBuf *body;
+    MemBuf *filePathName;   /* body output full path - if body store is file */
+    char *name;             /* Content-Disposition "name" value */
+    char *fileName;         /* Content-Disposition "filename" value */
+    int fileDesc;           /* body output - used when "filename" is set */
+    int sysErrNo;           /* errno value set when open the file was failed */
+    MemBuf *body;           /* body output - uset when "filename" is not set */
 };
 
 
@@ -43,6 +43,7 @@ void cpart_appendData(ContentPart *cpart, const char *data, unsigned len)
     if( cpart->fileName == NULL && cpart->body == NULL && (offset =
             datahdr_appendData(cpart->header, data, len, "form data")) >= 0)
     {
+        /* complete header received */
         contentDisp = datahdr_getHeaderVal(cpart->header,
                 "Content-Disposition");
         /* Content-Disposition: form-data; name="file"; filename="Test.xml" */
@@ -122,6 +123,12 @@ const char *cpart_getFileName(const ContentPart *cpart)
     return cpart->fileName;
 }
 
+const char *cpart_getFilePathName(const ContentPart *cpart)
+{
+    return cpart->filePathName && cpart->fileName ?
+        mb_data(cpart->filePathName) : NULL;
+}
+
 const char *cpart_getDataStr(const ContentPart *cpart)
 {
     return cpart->body ? mb_data(cpart->body) : NULL;
@@ -140,12 +147,12 @@ bool cpart_finishUpload(ContentPart *cpart, int *sysErrNo)
     return res;
 }
 
-void cpart_free(ContentPart *cpart, bool keepFile)
+void cpart_free(ContentPart *cpart)
 {
     if( cpart != NULL ) {
         if( cpart->fileDesc != -1 ) {
             close(cpart->fileDesc);
-            if( ! keepFile && unlink(mb_data(cpart->filePathName)) != 0 )
+            if( unlink(mb_data(cpart->filePathName)) != 0 )
                 log_error("remove %s fail", mb_data(cpart->filePathName));
         }
         datahdr_free(cpart->header);

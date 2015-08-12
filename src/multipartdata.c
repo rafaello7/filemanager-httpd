@@ -31,7 +31,7 @@ MultipartData *mpdata_new(const char *boundaryDelimiter, const char *destDir)
 
     mpdata->boundaryDelimiter = mb_newWithStr("\r\n--");
     mb_appendStr(mpdata->boundaryDelimiter, boundaryDelimiter);
-    mpdata->destDir = strdup(destDir);
+    mpdata->destDir = destDir ? strdup(destDir) : NULL;
     mpdata->parsePos = PP_BODY;
     mpdata->delimMatchPart = 2; /* body may start with boundary
                                  * without inital CRLF */
@@ -42,13 +42,13 @@ MultipartData *mpdata_new(const char *boundaryDelimiter, const char *destDir)
 
 void mpdata_appendData(MultipartData *mpdata, const char *data, unsigned len)
 {
-    const char *const dataEnd = data + len;
-    const char *const delim = mb_data(mpdata->boundaryDelimiter);
-    const unsigned delimLen = mb_dataLen(mpdata->boundaryDelimiter);
-    const char *partEnd;
+    const char *const dataEnd = data + len, *delim, *partEnd;
+    unsigned delimLen;
 
     if( mpdata->boundaryDelimiter == NULL ) /* after last part (in epilogue) */
         return;
+    delim = mb_data(mpdata->boundaryDelimiter);
+    delimLen = mb_dataLen(mpdata->boundaryDelimiter);
     if( mpdata->delimMatchPart > 0 ) {
         unsigned delimRmdrLen = delimLen - mpdata->delimMatchPart;
         if( memcmp(data, delim + mpdata->delimMatchPart,
@@ -138,7 +138,7 @@ bool mpdata_containsPartWithName(MultipartData *mpdata, const char *name)
     return mpdata_getPartByName(mpdata, name) != NULL;
 }
 
-void mpdata_free(MultipartData *mpdata, bool keepFile)
+void mpdata_free(MultipartData *mpdata)
 {
     unsigned i;
 
@@ -146,7 +146,7 @@ void mpdata_free(MultipartData *mpdata, bool keepFile)
         mb_free(mpdata->boundaryDelimiter);
         free(mpdata->destDir);
         for(i = 0; i < mpdata->partCount; ++i)
-            cpart_free(mpdata->parts[i], keepFile);
+            cpart_free(mpdata->parts[i]);
         free(mpdata);
     }
 }
