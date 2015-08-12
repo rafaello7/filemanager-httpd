@@ -20,13 +20,6 @@ struct ServerConnection {
     RequestBuf *request;
 };
 
-static void freeConn(struct ServerConnection *conn)
-{
-    close(conn->fd);
-    conn->fd = -1;
-    req_free(conn->request);
-}
-
 static void mainloop(void)
 {
     int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags, sysErrNo;
@@ -83,24 +76,20 @@ static void mainloop(void)
         }
         i = 0;
         while( i < connCount ) {
+            bool freeConn = false;
             conn = connections + i;
             if( FD_ISSET(conn->fd, &readFds) ) {
+                FD_CLR(conn->fd, &readFds);
                 while( (rd = read(conn->fd, buf, sizeof(buf))) > 0 &&
                         (wr = req_appendData(conn->request, buf, rd)) < 0 )
                     ;
                 if( rd < 0 ) {
                     if( errno != EWOULDBLOCK )
                         log_fatal("read");
-                }else if( rd == 0 ) {
-                    /* premature EOF */
-                    FD_CLR(conn->fd, &readFds);
-                    freeConn(conn);
-                }else{  /* rd > 0  =>  wr >= 0 */
-                    /*
-                    conn->response = reqhdlr_processRequest(conn->request);
-                    */
-                }
+                }else if( rd == 0 ) /* premature EOF */
+                    freeConn = true;
             }else if( FD_ISSET(conn->fd, &writeFds) ) {
+                FD_CLR(conn->fd, &writeFds);
                 if( (isSuccess = req_emitResponseBytes(conn->request,
                                 conn->fd, &sysErrNo))
                         || sysErrNo != EWOULDBLOCK )
@@ -110,13 +99,14 @@ static void mainloop(void)
                      * Both not worthy to notify */
                     if( !isSuccess && errno != ECONNRESET && errno != EPIPE )
                         log_error("connected socket write failed");
-                    FD_CLR(conn->fd, &writeFds);
-                    freeConn(conn);
+                    freeConn = true;
                 }
             }
-            if( conn->fd == -1 ) {
+            if( freeConn ) {
+                close(conn->fd);
+                req_free(conn->request);
                 if( i < connCount - 1 )
-                    connections[i] = connections[connCount-1];
+                    *conn = connections[connCount-1];
                 --connCount;
             }else
                 ++i;
