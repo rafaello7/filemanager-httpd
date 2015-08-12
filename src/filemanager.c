@@ -296,10 +296,12 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     gethostname(hostname, sizeof(hostname));
     /* head, title */
     resp_appendStr(resp, "<html><head><title>");
-    resp_appendChunkEscapeHtml(resp, &dchUrlPath);
-    resp_appendStr(resp, " on ");
+    if( dchUrlPath.len ) {
+        resp_appendChunkEscapeHtml(resp, &dchUrlPath);
+        resp_appendStr(resp, " on ");
+    }
     resp_appendStrEscapeHtml(resp, hostname);
-    resp_appendStrL(resp, "</title>", response_header,
+    resp_appendStrL(resp, " - File Manager</title>", response_header,
             "</head>\n<body>\n", NULL);
     /* host name as link to root */
     resp_appendStr(resp, "<span style=\"font-size: large; font-weight: bold\">"
