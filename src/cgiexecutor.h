@@ -3,6 +3,7 @@
 
 #include "requestheader.h"
 #include "respbuf.h"
+#include "datareadyselector.h"
 
 
 typedef struct CgiExecutor CgiExecutor;
@@ -10,7 +11,8 @@ typedef struct CgiExecutor CgiExecutor;
 
 CgiExecutor *cgiexe_new(const RequestHeader*, const char *exePath);
 
-void cgiexe_consumeBodyBytes(CgiExecutor*, const char *data, unsigned len);
+unsigned cgiexe_processData(CgiExecutor*, const char *data, unsigned len,
+        DataReadySelector*);
 
 RespBuf *cgiexe_requestReadCompleted(CgiExecutor*);
 

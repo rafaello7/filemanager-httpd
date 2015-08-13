@@ -17,13 +17,9 @@ typedef struct ServerConnection ServerConnection;
 ServerConnection *conn_new(int socketFd);
 
 
-/* Sets file descriptors on which the connection is awaiting for I/O ready.
- */
-void conn_setFDAwaitingForReady(ServerConnection*, DataReadySelector*);
-
-
 /* Advances request processing progress.
- * Returns true when the request processing is finished.
+ * If the request processing is finished, returns true. If not,
+ * sets appropriate file descriptors on selector and returns false.
  */
 bool conn_processDataReady(ServerConnection*, DataReadySelector*);
 

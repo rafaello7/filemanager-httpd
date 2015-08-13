@@ -37,8 +37,6 @@ static void mainloop(void)
     drs = drs_new();
     while( 1 ) {
         drs_setReadFd(drs, listenfd);
-        for(i = 0; i < connCount; ++i)
-            conn_setFDAwaitingForReady(connections[i], drs);
         drs_select(drs);
         if( drs_clearReadFd(drs, listenfd) ) {
             if( (acceptfd = accept(listenfd, NULL, NULL)) < 0 )

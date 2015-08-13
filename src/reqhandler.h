@@ -3,6 +3,7 @@
 
 
 #include "requestheader.h"
+#include "datareadyselector.h"
 
 
 typedef struct RequestHandler RequestHandler;
@@ -15,7 +16,8 @@ RequestHandler *reqhdlr_new(const RequestHeader*);
 
 /* Processes the piece of request body.
  */
-void reqhdlr_consumeBodyBytes(RequestHandler*, const char *data, unsigned len);
+unsigned reqhdlr_processData(RequestHandler*, const char *data,
+        unsigned len, DataReadySelector*);
 
 
 /* Signals the handler that request is completely read.

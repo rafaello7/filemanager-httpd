@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 
 
 struct CgiExecutor {
@@ -85,7 +87,7 @@ static void runCgi(const RequestHeader *hdr, const char *exePath)
 CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
 {
     CgiExecutor *cgiexe = malloc(sizeof(CgiExecutor));
-    int fdToCgi[2], fdFromCgi[2];
+    int fdToCgi[2], fdFromCgi[2], fdFlags;
 
     if( pipe(fdToCgi) != 0 )
         log_fatal("pipe");
@@ -107,15 +109,37 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
     }
     cgiexe->outFd = fdToCgi[1];
     close(fdToCgi[0]);
+    if( (fdFlags = fcntl(cgiexe->outFd, F_GETFL)) == -1 )
+        log_fatal("fcntl(F_GETFL)");
+    if( fcntl(cgiexe->outFd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
+        log_fatal("fcntl(F_SETFL)");
     cgiexe->inFd = fdFromCgi[0];
     close(fdFromCgi[1]);
     return cgiexe;
 }
 
-void cgiexe_consumeBodyBytes(CgiExecutor *cgiexe, const char *data,
-        unsigned len)
+unsigned cgiexe_processData(CgiExecutor *cgiexe, const char *data,
+        unsigned len, DataReadySelector *drs)
 {
-    write(cgiexe->outFd, data, len);
+    int wr;
+    unsigned wrtot = 0;
+
+    drs_clearWriteFd(drs, cgiexe->outFd);
+    while( cgiexe->outFd >= 0 && wrtot < len ) {
+        if( (wr = write(cgiexe->outFd, data + wrtot, len - wrtot)) < 0 ) {
+            if( errno == EWOULDBLOCK ) {
+                drs_setWriteFd(drs, cgiexe->outFd);
+                return wrtot;
+            }else{
+                if( errno != EPIPE )
+                    log_error("CGI write");
+                close(cgiexe->outFd);
+                cgiexe->outFd = -1;
+            }
+        }
+        wrtot += wr;
+    }
+    return len;
 }
 
 RespBuf *cgiexe_requestReadCompleted(CgiExecutor *cgiexe)

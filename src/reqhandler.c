@@ -343,14 +343,17 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
     return handler;
 }
 
-void reqhdlr_consumeBodyBytes(RequestHandler *hdlr, const char *data,
-        unsigned len)
+unsigned reqhdlr_processData(RequestHandler *hdlr, const char *data,
+        unsigned len, DataReadySelector *drs)
 {
+    unsigned processed = len;
+
     if( hdlr->filemgr != NULL ) {
         filemgr_consumeBodyBytes(hdlr->filemgr, data, len);
     }else if( hdlr->cgiexe != NULL ) {
-        cgiexe_consumeBodyBytes(hdlr->cgiexe, data, len);
+        processed = cgiexe_processData(hdlr->cgiexe, data, len, drs);
     }
+    return processed;
 }
 
 void reqhdlr_requestReadCompleted(RequestHandler *hdlr,
