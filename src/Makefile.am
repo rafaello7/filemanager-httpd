@@ -1,7 +1,7 @@
 sbin_PROGRAMS = filemanager-httpd
 
 filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
-							requestbuf.c \
+							datareadyselector.c serverconnection.c \
 							respbuf.c fmconfig.c \
 							contentpart.c multipartdata.c \
 							filemanager.c \
@@ -10,9 +10,9 @@ filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
 							reqhandler.c main.c \
 							fmconfig.h datachunk.h \
 							contentpart.h multipartdata.h
-							filemanager.h \
+							datareadyselector.h filemanager.h \
 							dataheader.h cgiexecutor.h membuf.h \
-							requestheader.h requestbuf.h respbuf.h \
+							requestheader.h serverconnection.h respbuf.h \
 							folder.h cmdline.h \
 							md5calc.h auth.h fmlog.h datasource.h \
 							reqhandler.h

@@ -1,9 +1,8 @@
 #include <stdbool.h>
-#include "reqhandler.h"
+#include "serverconnection.h"
 #include "fmconfig.h"
 #include "fmlog.h"
 #include "cmdline.h"
-#include "auth.h"
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -15,19 +14,12 @@
 #include <signal.h>
 
 
-struct ServerConnection {
-    int fd;
-    RequestBuf *request;
-};
-
 static void mainloop(void)
 {
-    int i, listenfd, acceptfd, fdMax, connCount = 0, rd, wr, fdFlags, sysErrNo;
+    int i, listenfd, acceptfd, connCount = 0, fdFlags;
     struct sockaddr_in addr;
-    struct ServerConnection *connections = NULL, *conn;
-    fd_set readFds, writeFds;
-    bool isSuccess;
-    char buf[65536];
+    ServerConnection **connections = NULL;
+    DataReadySelector *drs;
 
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
         log_fatal("socket");
@@ -42,25 +34,13 @@ static void mainloop(void)
         log_fatal("listen");
     if( ! config_switchToTargetUser() )
         exit(1);
-    FD_ZERO(&readFds);
-    FD_ZERO(&writeFds);
-
+    drs = drs_new();
     while( 1 ) {
-        FD_SET(listenfd, &readFds);
-        fdMax = listenfd;
-        for(i = 0; i < connCount; ++i) {
-            conn = connections + i;
-            if( ! req_isReadFinished(conn->request) ) {
-                FD_SET(conn->fd, &readFds);
-            }else{
-                FD_SET(conn->fd, &writeFds);
-            }
-            if( conn->fd > fdMax )
-                fdMax = conn->fd;
-        }
-        if( select(fdMax+1, &readFds, &writeFds, NULL, NULL) < 0 )
-            log_fatal("select");
-        if( FD_ISSET(listenfd, &readFds) ) {
+        drs_setReadFd(drs, listenfd);
+        for(i = 0; i < connCount; ++i)
+            conn_setFDAwaitingForReady(connections[i], drs);
+        drs_select(drs);
+        if( drs_clearReadFd(drs, listenfd) ) {
             if( (acceptfd = accept(listenfd, NULL, NULL)) < 0 )
                 log_fatal("accept");
             if( (fdFlags = fcntl(acceptfd, F_GETFL)) == -1 )
@@ -68,45 +48,16 @@ static void mainloop(void)
             if( fcntl(acceptfd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
                 log_fatal("fcntl(F_SETFL)");
             connections = realloc(connections,
-                    (connCount+1) * sizeof(struct ServerConnection));
-            conn = connections + connCount;
-            conn->fd = acceptfd;
-            conn->request = req_new();
+                    (connCount+1) * sizeof(ServerConnection*));
+            connections[connCount] = conn_new(acceptfd);
             ++connCount;
         }
         i = 0;
         while( i < connCount ) {
-            bool freeConn = false;
-            conn = connections + i;
-            if( FD_ISSET(conn->fd, &readFds) ) {
-                FD_CLR(conn->fd, &readFds);
-                while( (rd = read(conn->fd, buf, sizeof(buf))) > 0 &&
-                        (wr = req_appendData(conn->request, buf, rd)) < 0 )
-                    ;
-                if( rd < 0 ) {
-                    if( errno != EWOULDBLOCK )
-                        log_fatal("read");
-                }else if( rd == 0 ) /* premature EOF */
-                    freeConn = true;
-            }else if( FD_ISSET(conn->fd, &writeFds) ) {
-                FD_CLR(conn->fd, &writeFds);
-                if( (isSuccess = req_emitResponseBytes(conn->request,
-                                conn->fd, &sysErrNo))
-                        || sysErrNo != EWOULDBLOCK )
-                {
-                    /* ECONNRESET occurs when peer has closed connection
-                     * without receiving all data; similar EPIPE.
-                     * Both not worthy to notify */
-                    if( !isSuccess && errno != ECONNRESET && errno != EPIPE )
-                        log_error("connected socket write failed");
-                    freeConn = true;
-                }
-            }
-            if( freeConn ) {
-                close(conn->fd);
-                req_free(conn->request);
+            if( conn_processDataReady(connections[i], drs) ) {
+                conn_free(connections[i]);
                 if( i < connCount - 1 )
-                    *conn = connections[connCount-1];
+                    connections[i] = connections[connCount-1];
                 --connCount;
             }else
                 ++i;

@@ -101,7 +101,7 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
         dup2(fdFromCgi[1], 1);
         close(fdFromCgi[0]);
         close(fdFromCgi[1]);
-        runCgi(hdr, exePath);
+        runCgi(hdr, exePath);   /* does not return */
     default:
         break;
     }

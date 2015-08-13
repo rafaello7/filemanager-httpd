@@ -2,8 +2,7 @@
 #define REQHANDLER_H
 
 
-#include "requestbuf.h"
-#include "datasource.h"
+#include "requestheader.h"
 
 
 typedef struct RequestHandler RequestHandler;
