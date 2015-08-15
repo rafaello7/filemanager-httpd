@@ -3,6 +3,7 @@
 #include "fmlog.h"
 #include <sys/select.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 
 struct DataReadySelector {
@@ -63,5 +64,19 @@ void drs_select(DataReadySelector *drs)
     FD_ZERO(&drs->readFds);
     FD_ZERO(&drs->writeFds);
     drs->numFds = 0;
+}
+
+void drs_setNonBlockingCloExecFlags(int fd)
+{
+    int fdFlags;
+
+    if( (fdFlags = fcntl(fd, F_GETFL)) == -1 )
+        log_fatal("fcntl(F_GETFL)");
+    if( fcntl(fd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
+        log_fatal("fcntl(F_SETFL)");
+    if( (fdFlags = fcntl(fd, F_GETFD)) == -1 )
+        log_fatal("fcntl(F_GETFD)");
+    if( fcntl(fd, F_SETFD, fdFlags | FD_CLOEXEC) < 0 )
+        log_fatal("fcntl(F_SETFD)");
 }
 

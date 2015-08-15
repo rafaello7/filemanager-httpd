@@ -89,7 +89,7 @@ static void runCgi(const RequestHeader *hdr, const char *exePath)
 CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
 {
     CgiExecutor *cgiexe = malloc(sizeof(CgiExecutor));
-    int fdToCgi[2], fdFromCgi[2], fdFlags;
+    int fdToCgi[2], fdFromCgi[2];
 
     if( pipe(fdToCgi) != 0 )
         log_fatal("pipe");
@@ -111,24 +111,10 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
     }
     cgiexe->outFd = fdToCgi[1];
     close(fdToCgi[0]);
-    if( (fdFlags = fcntl(cgiexe->outFd, F_GETFL)) == -1 )
-        log_fatal("fcntl(F_GETFL)");
-    if( fcntl(cgiexe->outFd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
-        log_fatal("fcntl(F_SETFL)");
-    if( (fdFlags = fcntl(cgiexe->outFd, F_GETFD)) == -1 )
-        log_fatal("fcntl(F_GETFD)");
-    if( fcntl(cgiexe->outFd, F_SETFD, fdFlags | FD_CLOEXEC) < 0 )
-        log_fatal("fcntl(F_SETFD)");
+    drs_setNonBlockingCloExecFlags(cgiexe->outFd);
     cgiexe->inFd = fdFromCgi[0];
     close(fdFromCgi[1]);
-    if( (fdFlags = fcntl(cgiexe->inFd, F_GETFL)) == -1 )
-        log_fatal("fcntl(F_GETFL)");
-    if( fcntl(cgiexe->inFd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
-        log_fatal("fcntl(F_SETFL)");
-    if( (fdFlags = fcntl(cgiexe->inFd, F_GETFD)) == -1 )
-        log_fatal("fcntl(F_GETFD)");
-    if( fcntl(cgiexe->inFd, F_SETFD, fdFlags | FD_CLOEXEC) < 0 )
-        log_fatal("fcntl(F_SETFD)");
+    drs_setNonBlockingCloExecFlags(cgiexe->inFd);
     cgiexe->onlyHead = !strcmp(reqhdr_getMethod(hdr), "HEAD");
     cgiexe->header = datahdr_new();
     return cgiexe;
