@@ -4,6 +4,7 @@
 
 #include "datachunk.h"
 #include "datareadyselector.h"
+#include "responsesender.h"
 
 
 /* HTTP response buffer.
@@ -72,17 +73,9 @@ void resp_appendStrEscapeHtml(RespBuf*, const char *str);
 void resp_appendChunkEscapeHtml(RespBuf*, const DataChunk*);
 
 
-/* Finish response preparation.
+/* Finishes response preparation. Free the buffer, return data ready to send.
  */
-RespBuf *resp_finish(RespBuf*);
-
-
-bool resp_write(RespBuf*, int fd, DataReadySelector*);
-
-
-/* Ends use of the response.
- */
-void resp_free(RespBuf*);
+ResponseSender *resp_finish(RespBuf*);
 
 
 #endif /* RESPBUF_H */

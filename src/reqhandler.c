@@ -1,6 +1,7 @@
 #include <stdbool.h>
 #include "reqhandler.h"
 #include "respbuf.h"
+#include "responsesender.h"
 #include "fmlog.h"
 #include "auth.h"
 #include "filemanager.h"
@@ -19,7 +20,7 @@
 struct RequestHandler {
     FileManager *filemgr;
     CgiExecutor *cgiexe;
-    RespBuf *response;
+    ResponseSender *response;
 };
 
 
@@ -312,7 +313,7 @@ bool reqhdlr_progressResponse(RequestHandler *hdlr, int fd,
             hdlr->response = resp_finish(resp);
     }
     if( hdlr->response != NULL ) {
-        isFinished = resp_write(hdlr->response, fd, drs);
+        isFinished = rsndr_send(hdlr->response, fd, drs);
     }
     return isFinished;
 }
@@ -322,7 +323,7 @@ void reqhdlr_free(RequestHandler *hdlr)
     if( hdlr != NULL ) {
         filemgr_free(hdlr->filemgr);
         cgiexe_free(hdlr->cgiexe);
-        resp_free(hdlr->response);
+        rsndr_free(hdlr->response);
         free(hdlr);
     }
 }
