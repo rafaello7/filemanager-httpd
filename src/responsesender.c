@@ -62,7 +62,7 @@ ResponseSender *rsndr_new(MemBuf *header, MemBuf *body, int fileDesc)
     mb_appendStr(header, "\r\n");
     if( body ) {
         if( rsndr->nbytes == -1 && mb_dataLen(body) > 0 ) {
-            /* prepare first chunk: chunk begin append to header */
+            /* prepare first chunk: the chunk begin appending to header */
             sprintf(contentLength, "%x\r\n", mb_dataLen(body));
             mb_appendStr(header, contentLength);
             mb_appendStr(body, "\r\n");
@@ -75,55 +75,50 @@ ResponseSender *rsndr_new(MemBuf *header, MemBuf *body, int fileDesc)
 
 static void fillBuffer(ResponseSender *rsndr, DataReadySelector *drs)
 {
-    int toFill, rd, filledCount = 0;
+    int toFill, rd, filledCount;
     char chunkHeader[10];
 
-    if( rsndr->nbytes > 0 ) {
+    if( rsndr->nbytes >= 0 ) {
         toFill = rsndr->nbytes < 65536 ? rsndr->nbytes : 65536;
         if( mb_dataLen(rsndr->body) < toFill )
             mb_resize(rsndr->body, toFill);
-        while( filledCount < toFill && rsndr->fileDesc != -1 ) {
-            rd = mb_readFile(rsndr->body, rsndr->fileDesc, filledCount,
-                    toFill - filledCount);
-            if( rd > 0 ) {
+        filledCount = 0;
+        if( rsndr->fileDesc >= 0 ) {
+            while( filledCount < toFill && (rd = mb_readFile(rsndr->body,
+                    rsndr->fileDesc, filledCount, toFill - filledCount)) > 0)
                 filledCount += rd;
-            }else{
-                if( rd < 0 ) {
-                    if( errno == EWOULDBLOCK ) {
-                        if( filledCount == 0 )
-                            drs_setReadFd(drs, rsndr->fileDesc);
-                        rsndr->dataSize = filledCount;
-                        return;
-                    }
-                    log_error("fillBuffer");
+            if( filledCount < toFill ) {
+                if( rd < 0 && errno == EWOULDBLOCK ) {
+                    if( filledCount == 0 )
+                        drs_setReadFd(drs, rsndr->fileDesc);
+                }else{
+                    if( rd < 0 )
+                        log_error("fillBuffer");
+                    close(rsndr->fileDesc);
+                    rsndr->fileDesc = -1;
                 }
-                close(rsndr->fileDesc);
-                rsndr->fileDesc = -1;
             }
         }
-        if( filledCount < toFill )
+        if( filledCount < toFill && rsndr->fileDesc < 0 ) {
             mb_fillWithZeros(rsndr->body, filledCount, toFill - filledCount);
-        rsndr->nbytes -= toFill;
-        rsndr->dataSize = toFill;
+            filledCount = toFill;
+        }
+        rsndr->nbytes -= filledCount;
+        rsndr->dataSize = filledCount;
+        rsndr->dataOffset = 0;
     }else{
         toFill = 65546;
         if( mb_dataLen(rsndr->body) < toFill + 7 )
             mb_resize(rsndr->body, toFill + 7);
-        filledCount = 10;   /* space for chunk header */
-        while( filledCount < toFill && rsndr->fileDesc != -1 ) {
-            rd = mb_readFile(rsndr->body, rsndr->fileDesc, filledCount,
-                    toFill - filledCount);
-            if( rd > 0 ) {
-                filledCount += rd;
-            }else{
-                if( rd < 0 ) {
-                    if( errno == EWOULDBLOCK )
-                        break;
-                    log_error("fillBuffer");
-                }
-                close(rsndr->fileDesc);
-                rsndr->fileDesc = -1;
-            }
+        filledCount = 10;   /* making space for chunk header */
+        while( filledCount < toFill && (rd = mb_readFile(rsndr->body,
+                    rsndr->fileDesc, filledCount, toFill - filledCount)) > 0)
+            filledCount += rd;
+        if( filledCount < toFill && (rd == 0 || errno != EWOULDBLOCK) ) {
+            if( rd < 0 )
+                log_error("fillBuffer");
+            close(rsndr->fileDesc);
+            rsndr->fileDesc = -1;
         }
         if( filledCount > 10 ) {
             rd = sprintf(chunkHeader, "%x\r\n", filledCount-10);
@@ -136,6 +131,7 @@ static void fillBuffer(ResponseSender *rsndr, DataReadySelector *drs)
             filledCount = 0;
         }
         if( rsndr->fileDesc == -1 ) {
+            /* adding last chunk and empty trailer */
             mb_setData(rsndr->body, filledCount, "0\r\n\r\n", 5);
             filledCount += 5;
             rsndr->nbytes = 0;
@@ -153,7 +149,7 @@ bool rsndr_send(ResponseSender *rsndr, int fd, DataReadySelector *drs)
     if( rsndr->header != NULL ) {
         while( rsndr->dataOffset < mb_dataLen(rsndr->header) &&
                 (wr = write(fd, mb_data(rsndr->header) + rsndr->dataOffset,
-                            mb_dataLen(rsndr->header) - rsndr->dataOffset)) >= 0)
+                        mb_dataLen(rsndr->header) - rsndr->dataOffset)) >= 0)
         {
             rsndr->dataOffset += wr;
         }
