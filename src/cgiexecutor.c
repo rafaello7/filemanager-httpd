@@ -172,7 +172,8 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
         cgiexe->inFd = -1;
         resp = resp_new(HTTP_500, cgiexe->onlyHead);
         resp_appendHeader(resp, "Content-Type", "text/html");
-        resp_appendStr(resp, "<html><head>Internal Server Error</head>\n"
+        resp_appendStr(resp, "<html><head>\n"
+                "<title>Internal Server Error</title>\n</head>\n"
                 "<body><h3>Internal Server Error</h3>\n"
                 "Missing end-of-header line in CGI response\n"
                 "</body></html>");

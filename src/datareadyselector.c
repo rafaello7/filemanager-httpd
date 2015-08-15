@@ -37,26 +37,6 @@ void drs_setWriteFd(DataReadySelector *drs, int fd)
         drs->numFds = fd + 1;
 }
 
-#if 0
-bool drs_clearReadFd(DataReadySelector *drs, int fd)
-{
-    bool isSet = FD_ISSET(fd, &drs->readFds);
-
-    if( isSet )
-        FD_CLR(fd, &drs->readFds);
-    return isSet;
-}
-
-bool drs_clearWriteFd(DataReadySelector *drs, int fd)
-{
-    bool isSet = FD_ISSET(fd, &drs->writeFds);
-
-    if( isSet )
-        FD_CLR(fd, &drs->writeFds);
-    return isSet;
-}
-#endif
-
 void drs_select(DataReadySelector *drs)
 {
     if( select(drs->numFds, &drs->readFds, &drs->writeFds, NULL, NULL) < 0 )

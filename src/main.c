@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
 {
     if( cmdline_parse(argc, argv) ) {
         signal(SIGPIPE, SIG_IGN);
+        signal(SIGCHLD, SIG_IGN);
         config_parse();
         mainloop();
     }
