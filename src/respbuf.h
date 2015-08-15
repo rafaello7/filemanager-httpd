@@ -1,7 +1,9 @@
 #ifndef RESPBUF_H
 #define RESPBUF_H
 
-#include "datasource.h"
+
+#include "datachunk.h"
+#include "datareadyselector.h"
 
 
 /* HTTP response buffer.
@@ -23,7 +25,7 @@ typedef enum {
  *  >= 0    - errno value indicating the error
  *  < 0     - negated HTTP error, e.g. -405 for HTTP error 405
  */
-RespBuf *resp_new(HttpStatus);
+RespBuf *resp_new(HttpStatus, bool onlyHead);
 
 
 /* Returns error message associated with sysErrno given in resp_new().
@@ -70,9 +72,17 @@ void resp_appendStrEscapeHtml(RespBuf*, const char *str);
 void resp_appendChunkEscapeHtml(RespBuf*, const DataChunk*);
 
 
-/* Ends use of the response. Returns the response raw bytes to send.
+/* Finish response preparation.
  */
-DataSource *resp_finish(RespBuf*, bool onlyHead);
+RespBuf *resp_finish(RespBuf*);
+
+
+bool resp_write(RespBuf*, int fd, DataReadySelector*);
+
+
+/* Ends use of the response.
+ */
+void resp_free(RespBuf*);
 
 
 #endif /* RESPBUF_H */

@@ -5,6 +5,7 @@
 #include "auth.h"
 #include "filemanager.h"
 #include "cgiexecutor.h"
+#include "membuf.h"
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -17,8 +18,7 @@
 struct RequestHandler {
     FileManager *filemgr;
     CgiExecutor *cgiexe;
-    RespBuf *respBuf;
-    DataSource *response;
+    RespBuf *response;
 };
 
 
@@ -28,7 +28,7 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     int len;
     RespBuf *resp;
 
-    resp = resp_new(HTTP_301_MOVED_PERMANENTLY);
+    resp = resp_new(HTTP_301_MOVED_PERMANENTLY, onlyHead);
     len = strlen(urlPath);
     newPath = malloc(len+2);
     memcpy(newPath, urlPath, len);
@@ -57,7 +57,7 @@ static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
     char hostname[HOST_NAME_MAX];
     RespBuf *resp;
 
-    resp = resp_new(status);
+    resp = resp_new(status, onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
         gethostname(hostname, sizeof(hostname));
@@ -208,7 +208,7 @@ static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
 
     if( (fd = open(sysPath, O_RDONLY)) >= 0 ) {
         log_debug("opened %s", sysPath);
-        resp = resp_new(HTTP_200_OK);
+        resp = resp_new(HTTP_200_OK, onlyHead);
         resp_appendHeader(resp, "Content-Type",
                 getContentTypeByFileExt(sysPath));
         if( onlyHead ) {
@@ -254,7 +254,8 @@ static RespBuf *processFolderReq(const RequestHeader *rhdr,
     return resp;
 }
 
-static void doProcessRequest(RequestHandler *hdlr, const RequestHeader *rhdr)
+static RespBuf *doProcessRequest(RequestHandler *hdlr,
+        const RequestHeader *rhdr)
 {
     unsigned queryFileLen, isHeadReq;
     const char *queryFile;
@@ -321,25 +322,25 @@ static void doProcessRequest(RequestHandler *hdlr, const RequestHeader *rhdr)
         folder_free(folder);
         free(sysPath);
     }
-    hdlr->respBuf = resp;
+    return resp;
 }
 
 RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
 {
     RequestHandler *handler = malloc(sizeof(RequestHandler));
     const char *meth = reqhdr_getMethod(rhdr);
-    int isHeadReq = ! strcmp(meth, "HEAD");
+    RespBuf *resp = NULL;
+    bool isHeadReq = ! strcmp(meth, "HEAD");
 
     handler->filemgr = NULL;
     handler->cgiexe = NULL;
-    handler->respBuf = NULL;
-    handler->response = NULL;
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
-        handler->respBuf = resp_new(HTTP_405_METHOD_NOT_ALLOWED);
-        resp_appendHeader(handler->respBuf, "Allow", "GET, HEAD, POST");
+        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED, isHeadReq);
+        resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
     }else{
-        doProcessRequest(handler, rhdr);
+        resp = doProcessRequest(handler, rhdr);
     }
+    handler->response = resp == NULL ? NULL : resp_finish(resp);
     return handler;
 }
 
@@ -361,27 +362,35 @@ void reqhdlr_requestReadCompleted(RequestHandler *hdlr,
 {
     const char *meth = reqhdr_getMethod(rhdr);
     int isHeadReq = ! strcmp(meth, "HEAD");
+    RespBuf *resp = NULL;
 
-    if( hdlr->respBuf == NULL ) {
-        if( hdlr->filemgr != NULL )
-            hdlr->respBuf = processFolderReq(rhdr, hdlr->filemgr);
-        else if( hdlr->cgiexe != NULL ) {
-            hdlr->respBuf = cgiexe_requestReadCompleted(hdlr->cgiexe);
+    if( hdlr->cgiexe != NULL ) {
+        cgiexe_requestReadCompleted(hdlr->cgiexe);
+    }else if( hdlr->response == NULL ) {
+        if( hdlr->filemgr != NULL ) {
+            resp = processFolderReq(rhdr, hdlr->filemgr);
         }else
-            hdlr->respBuf = printMesgPage(HTTP_500,
+            resp = printMesgPage(HTTP_500,
                     "reqhandler: unspecified handler",
                     reqhdr_getPath(rhdr), isHeadReq, false);
-
+        hdlr->response = resp_finish(resp);
     }
-    resp_appendHeader(hdlr->respBuf, "Connection", "close");
-    resp_appendHeader(hdlr->respBuf, "Server", "filemanager-httpd");
-    hdlr->response = resp_finish(hdlr->respBuf, isHeadReq);
-    hdlr->respBuf = NULL;
 }
 
-bool reqhdlr_emitResponseBytes(RequestHandler *hdlr, int fd, int *sysErrNo)
+bool reqhdlr_progressResponse(RequestHandler *hdlr, int fd,
+        DataReadySelector *drs)
 {
-    return ds_write(hdlr->response, fd, sysErrNo);
+    bool isFinished = false;
+
+    if( hdlr->response == NULL && hdlr->cgiexe != NULL ) {
+        RespBuf *resp = cgiexe_getResponse(hdlr->cgiexe, drs);
+        if( resp != NULL )
+            hdlr->response = resp_finish(resp);
+    }
+    if( hdlr->response != NULL ) {
+        isFinished = resp_write(hdlr->response, fd, drs);
+    }
+    return isFinished;
 }
 
 void reqhdlr_free(RequestHandler *hdlr)
@@ -389,7 +398,7 @@ void reqhdlr_free(RequestHandler *hdlr)
     if( hdlr != NULL ) {
         filemgr_free(hdlr->filemgr);
         cgiexe_free(hdlr->cgiexe);
-        ds_free(hdlr->response);
+        resp_free(hdlr->response);
         free(hdlr);
     }
 }

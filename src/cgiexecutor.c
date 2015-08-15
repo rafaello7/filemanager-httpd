@@ -11,7 +11,9 @@
 
 
 struct CgiExecutor {
+    bool onlyHead;
     int outFd, inFd;
+    DataHeader *header;
 };
 
 static void appendEnv(char ***envpLoc, const char *name, const char *value)
@@ -113,8 +115,22 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
         log_fatal("fcntl(F_GETFL)");
     if( fcntl(cgiexe->outFd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
         log_fatal("fcntl(F_SETFL)");
+    if( (fdFlags = fcntl(cgiexe->outFd, F_GETFD)) == -1 )
+        log_fatal("fcntl(F_GETFD)");
+    if( fcntl(cgiexe->outFd, F_SETFD, fdFlags | FD_CLOEXEC) < 0 )
+        log_fatal("fcntl(F_SETFD)");
     cgiexe->inFd = fdFromCgi[0];
     close(fdFromCgi[1]);
+    if( (fdFlags = fcntl(cgiexe->inFd, F_GETFL)) == -1 )
+        log_fatal("fcntl(F_GETFL)");
+    if( fcntl(cgiexe->inFd, F_SETFL, fdFlags | O_NONBLOCK) < 0 )
+        log_fatal("fcntl(F_SETFL)");
+    if( (fdFlags = fcntl(cgiexe->inFd, F_GETFD)) == -1 )
+        log_fatal("fcntl(F_GETFD)");
+    if( fcntl(cgiexe->inFd, F_SETFD, fdFlags | FD_CLOEXEC) < 0 )
+        log_fatal("fcntl(F_SETFD)");
+    cgiexe->onlyHead = !strcmp(reqhdr_getMethod(hdr), "HEAD");
+    cgiexe->header = datahdr_new();
     return cgiexe;
 }
 
@@ -124,7 +140,6 @@ unsigned cgiexe_processData(CgiExecutor *cgiexe, const char *data,
     int wr;
     unsigned wrtot = 0;
 
-    drs_clearWriteFd(drs, cgiexe->outFd);
     while( cgiexe->outFd >= 0 && wrtot < len ) {
         if( (wr = write(cgiexe->outFd, data + wrtot, len - wrtot)) < 0 ) {
             if( errno == EWOULDBLOCK ) {
@@ -142,33 +157,45 @@ unsigned cgiexe_processData(CgiExecutor *cgiexe, const char *data,
     return len;
 }
 
-RespBuf *cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
+void cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
+{
+    close(cgiexe->outFd);
+    cgiexe->outFd = -1;
+}
+
+RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
 {
     RespBuf *resp = NULL;
     char buf[4096];
-    int offset, rd;
-    DataHeader *hdr;
+    int offset = -1, rd;
     const char *headerVal;
 
-    close(cgiexe->outFd);
-    cgiexe->outFd = -1;
-    hdr = datahdr_new();
-    while( (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
-        offset = 0;
-        if( resp == NULL && (offset = datahdr_appendData(hdr, buf, rd,
-                        "CGI response")) >= 0)
-            resp = resp_new(HTTP_200_OK);
-        if( resp != NULL )
-            resp_appendData(resp, buf + offset, rd - offset);
+    while( offset < 0 && (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
+        offset = datahdr_appendData(cgiexe->header, buf, rd, "CGI response");
     }
-    close(cgiexe->inFd);
-    cgiexe->inFd = -1;
-    if( resp == NULL ) /* incomplete header in CGI response */
-        resp = resp_new(HTTP_200_OK);
-    headerVal = datahdr_getHeaderVal(hdr, "Content-Type");
-    resp_appendHeader(resp, "Content-Type",
-            headerVal ? headerVal : "text/plain");
-    datahdr_free(hdr);
+    if( offset >= 0 ) {
+        resp = resp_new(HTTP_200_OK, cgiexe->onlyHead);
+        headerVal = datahdr_getHeaderVal(cgiexe->header, "Content-Type");
+        resp_appendHeader(resp, "Content-Type",
+                headerVal ? headerVal : "text/plain");
+        resp_appendData(resp, buf + offset, rd - offset);
+        resp_enqFile(resp, cgiexe->inFd);
+        cgiexe->inFd = -1;
+    }else if( rd == 0 ) { /* incomplete header in CGI response */
+        close(cgiexe->inFd);
+        cgiexe->inFd = -1;
+        resp = resp_new(HTTP_500, cgiexe->onlyHead);
+        resp_appendHeader(resp, "Content-Type", "text/html");
+        resp_appendStr(resp, "<html><head>Internal Server Error</head>\n"
+                "<body><h3>Internal Server Error</h3>\n"
+                "Missing end-of-header line in CGI response\n"
+                "</body></html>");
+    }else{
+        if( errno != EWOULDBLOCK )
+            log_fatal("cgiexe: read");
+        drs_setReadFd(drs, cgiexe->inFd);
+        return NULL;
+    }
     return resp;
 }
 
@@ -179,6 +206,7 @@ void cgiexe_free(CgiExecutor *cgiexe)
             close(cgiexe->outFd);
         if( cgiexe->inFd != -1 )
             close(cgiexe->inFd);
+        datahdr_free(cgiexe->header);
         free(cgiexe);
     }
 }

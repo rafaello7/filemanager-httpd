@@ -27,10 +27,10 @@ void reqhdlr_requestReadCompleted(RequestHandler*, const RequestHeader*);
 
 /* Writes response data to file (socket) given by fd.
  * Returns true when all data were written, false otherwise. When false,
- * sysErrNo is set to errno value.
+ * selector value is set appropriately.
  */
-bool reqhdlr_emitResponseBytes(RequestHandler*, int fd, int *sysErrNo);
-
+bool reqhdlr_progressResponse(RequestHandler*, int fileDesc,
+        DataReadySelector*);
 
 /* Ends use of RequestHandler.
  */

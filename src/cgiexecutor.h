@@ -14,7 +14,9 @@ CgiExecutor *cgiexe_new(const RequestHeader*, const char *exePath);
 unsigned cgiexe_processData(CgiExecutor*, const char *data, unsigned len,
         DataReadySelector*);
 
-RespBuf *cgiexe_requestReadCompleted(CgiExecutor*);
+void cgiexe_requestReadCompleted(CgiExecutor*);
+
+RespBuf *cgiexe_getResponse(CgiExecutor*, DataReadySelector*);
 
 void cgiexe_free(CgiExecutor*);
 

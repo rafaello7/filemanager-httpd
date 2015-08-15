@@ -141,6 +141,7 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
                         "line ignored\n", configFName, lineNo);
             }
         }
+        fclose(fp);
     }else{
         fprintf(stderr, "WARN: unable to read configuration from %s: %s\n",
                 configFName, strerror(errno));

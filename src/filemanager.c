@@ -287,7 +287,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     RespBuf *resp;
     unsigned pathElemBeg, pathElemEnd;
 
-    resp = resp_new(HTTP_200_OK);
+    resp = resp_new(HTTP_200_OK, onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( onlyHead )
         return resp;

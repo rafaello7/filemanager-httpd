@@ -164,50 +164,34 @@ static void appendData(ServerConnection *conn, DataReadySelector *drs)
 
 bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
 {
-    int rd, sysErrNo;
-    bool isSuccess, freeConn;
+    int rd;
+    bool freeConn = false;
 
-    if( drs_clearReadFd(drs, conn->socketFd) || conn->readSize ) {
-        while( true ) {
-            if( conn->readSize ) {
-                appendData(conn, drs);
-                if( conn->readSize != 0 )
-                    break;
-            }
-            if( conn->readSize == 0 ) {
-                if( (rd = read(conn->socketFd, conn->readBuffer,
-                        sizeof(conn->readBuffer))) <= 0 )
-                {
-                    if( rd < 0 ) {
-                        if( errno != EWOULDBLOCK )
-                            log_fatal("read");
-                    }else if( rd == 0 ) /* premature EOF */
-                        freeConn = true;
-                    break;
-                }
-                conn->readSize = rd;
-            }
+    while( true ) {
+        if( conn->readSize ) {
+            appendData(conn, drs);
         }
-    }
-    if( drs_clearWriteFd(drs, conn->socketFd) ) {
-        if( (isSuccess = reqhdlr_emitResponseBytes(conn->handler,
-                        conn->socketFd, &sysErrNo))
-                || sysErrNo != EWOULDBLOCK )
+        if( conn->readSize != 0 )
+            break;
+        if( (rd = read(conn->socketFd, conn->readBuffer,
+                sizeof(conn->readBuffer))) <= 0 )
         {
-            /* ECONNRESET occurs when peer has closed connection
-             * without receiving all data; similar EPIPE.
-             * Both not worthy to notify */
-            if( !isSuccess && sysErrNo != ECONNRESET && sysErrNo != EPIPE )
-                log_error("connected socket write failed");
-            freeConn = true;
+            if( rd < 0 ) {
+                if( errno != EWOULDBLOCK ) {
+                    if( errno != ECONNRESET )
+                        log_error("read");
+                    freeConn = true;
+                }
+            }else if( rd == 0 ) /* premature EOF */
+                freeConn = true;
+            break;
         }
+        conn->readSize = rd;
     }
-    if( ! freeConn ) {
-        if( conn->rrs != RRS_READ_FINISHED && conn->readSize == 0 )
-            drs_setReadFd(drs, conn->socketFd);
-        if( conn->rrs == RRS_READ_FINISHED )
-            drs_setWriteFd(drs, conn->socketFd);
-    }
+    if( conn->handler != NULL )
+        freeConn = reqhdlr_progressResponse(conn->handler, conn->socketFd, drs);
+    if( ! freeConn && conn->rrs != RRS_READ_FINISHED && conn->readSize == 0 )
+        drs_setReadFd(drs, conn->socketFd);
     return freeConn;
 }
 
