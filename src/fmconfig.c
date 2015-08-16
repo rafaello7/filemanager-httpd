@@ -224,6 +224,8 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     int urlPathLen, bestShLen = -1;
 
     urlPathLen = strlen(urlPath);
+    while( urlPathLen > 0 && urlPath[urlPathLen-1] == '/' )
+        --urlPathLen;
     for(cur = gShares; cur->urlpath; ++cur) {
         int shLen = strlen(cur->urlpath);
         if( shLen > urlPathLen || shLen <= bestShLen )
@@ -254,6 +256,8 @@ Folder *config_getSubSharesForPath(const char *urlPath)
     int pathLen;
     DataChunk dchPath, ent;
     const FolderEntry *fe;
+    bool isFolder;
+    struct stat st;
 
     pathLen = strlen(urlPath);
     while( pathLen > 0 && urlPath[pathLen-1] == '/' )
@@ -272,11 +276,15 @@ Folder *config_getSubSharesForPath(const char *urlPath)
                 for(fe = folder_getEntries(folder); fe->fileName != NULL &&
                         !dch_equalsStr(&ent, fe->fileName); ++fe)
                     ;
-                if( fe->fileName == NULL )
-                    folder_addEntryChunk(folder, &ent, true, 0);
+                if( fe->fileName == NULL ) {
+                    isFolder = dchPath.len || stat(cur->syspath, &st) ||
+                         S_ISDIR(st.st_mode);
+                    folder_addEntryChunk(folder, &ent, isFolder, st.st_size);
+                }
             }
         }
     }
+    folder_sortEntries(folder);
     return folder;
 }
 

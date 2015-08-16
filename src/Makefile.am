@@ -11,7 +11,7 @@ filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
 							reqhandler.c main.c \
 							\
 							fmconfig.h datachunk.h contenttype.h \
-							contentpart.h multipartdata.h
+							contentpart.h multipartdata.h \
 							datareadyselector.h filemanager.h \
 							dataheader.h cgiexecutor.h membuf.h \
 							requestheader.h serverconnection.h \
