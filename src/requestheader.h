@@ -54,6 +54,11 @@ bool reqhdr_getHeaderAt(const RequestHeader*, unsigned idx,
 const char *reqhdr_getHeaderVal(const RequestHeader*, const char *headerName);
 
 
+/* Returns true when "Transfer-Encoding" header line contains "chunked" value.
+ */
+bool reqhdr_isChunkedTransferEncoding(const RequestHeader*);
+
+
 enum LoginState reqhdr_getLoginState(const RequestHeader*);
 
 

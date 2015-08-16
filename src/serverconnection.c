@@ -24,7 +24,7 @@ struct ServerConnection {
     unsigned readSize;
     enum RequestReadState rrs;
     RequestHeader *header;
-    char *chunkHdr;
+    MemBuf *chunkHdr;
     RequestHandler *handler;
     unsigned long long bodyLen;
     unsigned long long bodyReadLen;
@@ -48,19 +48,11 @@ ServerConnection *conn_new(int socketFd)
 
 static void onFinishedHeader(ServerConnection *conn)
 {
-    int isChunked = 0;
     const char *val;
 
-    if( (val = reqhdr_getHeaderVal(conn->header, "Transfer-Encoding")) != NULL) {
-        while( ! isChunked && val ) {
-            val += strspn(val, ", \t");
-            isChunked = !strncasecmp(val, "chunked", 7);
-            val = strchr(val, ',');
-        }
-    }
     conn->handler = reqhdlr_new(conn->header);
-    if( isChunked ) {
-        conn->chunkHdr = strdup("");
+    if( reqhdr_isChunkedTransferEncoding(conn->header) ) {
+        conn->chunkHdr = mb_newWithStr("\r\n");
         conn->rrs = RRS_READ_BODY;
     }else{
         if( (val = reqhdr_getHeaderVal(conn->header, "Content-Length")) != NULL)
@@ -75,7 +67,7 @@ static void onFinishedHeader(ServerConnection *conn)
 static void appendBodyData(ServerConnection *conn, DataReadySelector *drs)
 {
     const char *bol, *eol, *const dataEnd = conn->readBuffer + conn->readSize;
-    unsigned curLen, addLen, processed;
+    unsigned addLen, processed;
 
     bol = conn->readBuffer + conn->readOffset;
     while( conn->rrs == RRS_READ_BODY && bol < dataEnd ) {
@@ -91,27 +83,24 @@ static void appendBodyData(ServerConnection *conn, DataReadySelector *drs)
         }
         if( conn->bodyReadLen == conn->bodyLen ) {
             if( conn->chunkHdr != NULL ) {
-                curLen = strlen(conn->chunkHdr);
+                if( mb_dataLen(conn->chunkHdr) < 2 ) {
+                    addLen = dataEnd - bol < 2 - mb_dataLen(conn->chunkHdr) ?
+                        dataEnd - bol : 2 - mb_dataLen(conn->chunkHdr);
+                    mb_appendData(conn->chunkHdr, bol, addLen);
+                    bol += addLen;
+                }
                 eol = memchr(bol, '\n', dataEnd - bol);
                 addLen = (eol==NULL ? dataEnd : eol) - bol;
-                conn->chunkHdr = realloc(conn->chunkHdr,
-                        curLen + addLen + 1);
-                memcpy(conn->chunkHdr + curLen, bol, addLen);
-                curLen += addLen;
-                conn->chunkHdr[curLen] = '\0';
+                mb_appendData(conn->chunkHdr, bol, addLen);
                 if( eol != NULL ) {
-                    addLen = strtoul(conn->chunkHdr, NULL, 16);
-                    if( addLen == 0 ) {
-                        conn->bodyLen -= 2;      /* strip CRLF */
+                    addLen = strtoul(mb_data(conn->chunkHdr)+2, NULL, 16);
+                    if( addLen == 0 ) { /* end of body */
                         conn->rrs = RRS_READ_TRAILER;
-                    }else if( conn->bodyLen == 0 ) {
-                        conn->bodyLen = addLen+2;
                     }else{
                         conn->bodyLen += addLen;
-                        conn->bodyReadLen -= 2; /* strip CRLF*/
                     }
                     bol = eol + 1;
-                    conn->chunkHdr[0] = '\0';
+                    mb_resize(conn->chunkHdr, 0);
                 }else{
                     bol = dataEnd;
                 }
@@ -200,7 +189,7 @@ void conn_free(ServerConnection *conn)
     if( conn != NULL ) {
         close(conn->socketFd);
         reqhdr_free(conn->header);
-        free(conn->chunkHdr);
+        mb_free(conn->chunkHdr);
         reqhdlr_free(conn->handler);
         free(conn);
     }

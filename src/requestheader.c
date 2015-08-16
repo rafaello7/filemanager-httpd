@@ -72,6 +72,21 @@ const char *reqhdr_getHeaderVal(const RequestHeader *req,
     return NULL;
 }
 
+bool reqhdr_isChunkedTransferEncoding(const RequestHeader *req)
+{
+    const char *val;
+    bool isChunked = false;
+
+    if( (val = reqhdr_getHeaderVal(req, "Transfer-Encoding")) != NULL) {
+        while( ! isChunked && val ) {
+            val += strspn(val, ", \t");
+            isChunked = !strncasecmp(val, "chunked", 7);
+            val = strchr(val, ',');
+        }
+    }
+    return isChunked;
+}
+
 enum LoginState reqhdr_getLoginState(const RequestHeader *req)
 {
     return req->loginState;
