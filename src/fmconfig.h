@@ -44,6 +44,16 @@ char *config_getIndexFile(const char *dir, int *sysErrNo);
 bool config_isCGI(const char *urlPath);
 
 
+/* Searches for CGI executable to handle given URL.
+ * Returns true when found. The buffers are filled in this case with:
+ *   cgiExeBuf      - CGI executable pathname
+ *   cgiUrlBuf      - URL path part corresponding to the executable path
+ *   cgiSubPathBuf  - the rest of URL path (NULL when empty)
+ */
+bool config_findCGI(const char *urlPath, char **cgiExeBuf, char **cgiUrlBuf,
+        char **cgiSubPathBuf);
+
+
 /* Stores in md5sum a MD5 sum of string constructed as concatenation of:
  *      username ":" realm ":" password
  * Returns true on success, false when credentials for the user don't exist.

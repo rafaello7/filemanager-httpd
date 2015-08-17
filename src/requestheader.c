@@ -10,7 +10,7 @@
 
 struct RequestHeader {
     char *request;
-    const char *path;
+    const char *path, *query;
     char **headers;
     int headerCount;    /* number of complete headers; the headerCount-th item
                          * is incomplete.
@@ -24,7 +24,7 @@ RequestHeader *reqhdr_new(void)
     RequestHeader *req = malloc(sizeof(RequestHeader));
 
     req->request = strdup("");
-    req->path = NULL;
+    req->path = req->query = NULL;
     req->headers = NULL;
     req->headerCount = -1;
     req->loginState = LS_LOGGED_OUT;
@@ -39,6 +39,11 @@ const char *reqhdr_getMethod(const RequestHeader *req)
 const char *reqhdr_getPath(const RequestHeader *req)
 {
     return req->path;
+}
+
+const char *reqhdr_getQuery(const RequestHeader *req)
+{
+    return req->query;
 }
 
 bool reqhdr_getHeaderAt(const RequestHeader *req, unsigned idx,
@@ -107,6 +112,7 @@ static void decodeRequestStartLine(RequestHeader *req)
 {
     char *src, *dest, num[3];
 
+    /* req->request example: "GET /some%20dir/file?query HTTP/1.1" */
     if( (src = strchr(req->request, ' ')) != NULL ) {
         *src++ = '\0';  /* request method terminate with '\0' */
         req->path = dest = src;
@@ -122,12 +128,18 @@ static void decodeRequestStartLine(RequestHeader *req)
                 }
                 num[2] = '\0';
                 *((unsigned char*)dest) = strtoul(num, NULL, 16);
+                ++dest;
+            }else if( *src == '?' ) {
+                /* query string (do not decode) */
+                req->query = ++src;
+                src += strcspn(src, " ");
+                *src = '\0';    /* end of query */
             }else{
                 if( dest != src )
                     *dest = *src;
                 ++src;
+                ++dest;
             }
-            ++dest;
         }
         *dest = '\0';
     }else{

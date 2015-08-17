@@ -205,15 +205,30 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
     }else{
         int sysErrNo = 0;
         struct stat st;
-        char *sysPath = config_getSysPathForUrlPath(queryFile), *indexFile;
+        char *sysPath, *indexFile;
+        char *cgiUrl = NULL, *cgiSubPath = NULL;
         Folder *folder = NULL;
-        bool isFolder = false;
+        bool isFolder = false, isCGI = false;
 
+        sysPath = config_getSysPathForUrlPath(queryFile);
+        printf(">>> sysPath=%s\n", sysPath);
         if( sysPath != NULL ) {
-            if( stat(sysPath, &st) == 0 )
+            if( stat(sysPath, &st) == 0 ) {
                 isFolder = S_ISDIR(st.st_mode);
-            else
+                isCGI = S_ISREG(st.st_mode) && config_isCGI(queryFile);
+            }else{
+                char *cgiExe;
+
                 sysErrNo = errno;
+                printf(">>> errno = %d\n", sysErrNo);
+                if( sysErrNo == ENOTDIR && (isCGI = config_findCGI(queryFile,
+                                &cgiExe, &cgiUrl, &cgiSubPath)) )
+                {
+                    sysErrNo = 0;
+                    free(sysPath);
+                    sysPath = cgiExe;
+                }
+            }
         }else{
             if( (folder = config_getSubSharesForPath(queryFile)) == NULL )
                 sysErrNo = ENOENT;
@@ -235,8 +250,9 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
             if( sysErrNo == 0 ) {
                 if( isFolder ) {
                     hdlr->filemgr = filemgr_new(sysPath, rhdr);
-                }else if( config_isCGI(queryFile) ) {
-                    hdlr->cgiexe = cgiexe_new(rhdr, sysPath);
+                }else if( isCGI ) {
+                    hdlr->cgiexe = cgiexe_new(rhdr, sysPath,
+                            cgiUrl == NULL ? queryFile : cgiUrl, cgiSubPath);
                 }else{
                     resp = processFileReq(queryFile, sysPath, isHeadReq);
                 }
@@ -246,6 +262,8 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
         }
         folder_free(folder);
         free(sysPath);
+        free(cgiUrl);
+        free(cgiSubPath);
     }
     return resp;
 }

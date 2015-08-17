@@ -224,8 +224,8 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     int urlPathLen, bestShLen = -1;
 
     urlPathLen = strlen(urlPath);
-    while( urlPathLen > 0 && urlPath[urlPathLen-1] == '/' )
-        --urlPathLen;
+//    while( urlPathLen > 0 && urlPath[urlPathLen-1] == '/' )
+//        --urlPathLen;
     for(cur = gShares; cur->urlpath; ++cur) {
         int shLen = strlen(cur->urlpath);
         if( shLen > urlPathLen || shLen <= bestShLen )
@@ -331,7 +331,7 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
 bool config_isCGI(const char *urlPath)
 {
     unsigned i;
-    const char *cgiPatt;
+    const char *cgiPatt, *subPath;
     bool match = false;
 
     for( i = 0; i < gCgiPatternCount && !match; ++i) {
@@ -339,14 +339,61 @@ bool config_isCGI(const char *urlPath)
         if( cgiPatt[0] == '/' )
             match = fnmatch(cgiPatt, urlPath, FNM_PATHNAME|FNM_PERIOD) == 0;
         else{
-            while( urlPath != NULL && ! match ) {
-                ++urlPath;
-                match = fnmatch(cgiPatt, urlPath, FNM_PATHNAME|FNM_PERIOD) == 0;
-                urlPath = strchr(urlPath, '/');
+            subPath = urlPath;
+            while( subPath != NULL && ! match ) {
+                ++subPath;
+                match = fnmatch(cgiPatt, subPath, FNM_PATHNAME|FNM_PERIOD) == 0;
+                subPath = strchr(subPath, '/');
             }
         }
     }
     return match;
+}
+
+bool config_findCGI(const char *urlPath, char **cgiExeBuf, char **cgiUrlBuf,
+        char **cgiSubPathBuf)
+{
+    char *cgiExe = NULL, *cgiUrl = NULL, *cgiSubPath = NULL, *slashPos;
+    struct stat st;
+    bool isCGI;
+
+    cgiUrl = strdup(urlPath);
+    isCGI = config_isCGI(cgiUrl) &&
+            (cgiExe = config_getSysPathForUrlPath(cgiUrl)) != NULL &&
+            stat(cgiExe, &st) == 0 && S_ISREG(st.st_mode);
+    if( ! isCGI ) {
+        if( (slashPos = strrchr(cgiUrl, '/')) == NULL )
+            slashPos = cgiUrl;
+        while( ! isCGI && slashPos != cgiUrl ) {
+            *slashPos = '\0';
+            if( config_isCGI(cgiUrl) ) {
+                cgiExe = config_getSysPathForUrlPath(cgiUrl);
+                if( cgiExe != NULL && stat(cgiExe, &st) == 0 &&
+                        S_ISREG(st.st_mode) )
+                {
+                    isCGI = true;
+                    cgiSubPath = slashPos;
+                }else
+                    free(cgiExe);
+            }
+            *slashPos = '/';
+            while( slashPos != cgiUrl && *--slashPos != '/' )
+                ;
+        }
+    }
+    if( isCGI ) {
+        *cgiExeBuf = cgiExe;
+        *cgiUrlBuf = cgiUrl;
+        if( cgiSubPath != NULL ) {
+            slashPos = cgiSubPath;
+            cgiSubPath = strdup(cgiSubPath);
+            *slashPos = '\0';
+        }
+        *cgiSubPathBuf = cgiSubPath;
+    }else{
+        free(cgiUrl);
+    }
+    return cgiSubPath != NULL;
 }
 
 bool config_getDigestAuthCredential(const char *userName, int userNameLen,

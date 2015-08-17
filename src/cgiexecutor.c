@@ -106,7 +106,8 @@ static void putHeader(char ***envpLoc, const char *headerName,
     free(nameBuf);
 }
 
-static void runCgi(const RequestHeader *hdr, const char *exePath)
+static void runCgi(const RequestHeader *hdr, const char *exePath,
+        const char *scriptName, const char *pathInfo)
 {
     const char *arg0, *headerName, *headerVal, *contentLength = NULL;
     char ctLenBuf[10];
@@ -121,7 +122,16 @@ static void runCgi(const RequestHeader *hdr, const char *exePath)
     argv[0] = strdup(arg0);
     argv[1] = NULL;
     appendEnv(&envp, "GATEWAY_INTERFACE", "1.1");
+    if( pathInfo != NULL ) {
+        appendEnv(&envp, "PATH_INFO", pathInfo);
+        if( (headerVal = config_getSysPathForUrlPath(pathInfo)) != NULL )
+            appendEnv(&envp, "PATH_TRANSLATED", headerVal);
+    }
+    if( (headerVal = reqhdr_getQuery(hdr)) != NULL )
+        appendEnv(&envp, "QUERY_STRING", headerVal);
     appendEnv(&envp, "REQUEST_METHOD", reqhdr_getMethod(hdr));
+    if( scriptName != NULL )
+        appendEnv(&envp, "SCRIPT_NAME", scriptName);
     for(i = 0; reqhdr_getHeaderAt(hdr, i, &headerName, &headerVal); ++i) {
         if( ! strcasecmp(headerName, "Content-Type") ) {
             appendEnv(&envp, "CONTENT_TYPE", headerVal);
@@ -138,11 +148,16 @@ static void runCgi(const RequestHeader *hdr, const char *exePath)
     fatalErrorResp("unable to execute CGI", NULL);
 }
 
-CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
+CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath,
+        const char *scriptName, const char *pathInfo)
 {
     CgiExecutor *cgiexe = malloc(sizeof(CgiExecutor));
     int fdToCgi[2], fdFromCgi[2];
+    const char *query = reqhdr_getQuery(hdr);
 
+    log_debug("executing %s, SCRIPT_NAME=%s, PATH_INFO=%s, QUERY_STRING=%s",
+            exePath, scriptName == NULL ? "" : scriptName,
+            pathInfo == NULL ? "" : pathInfo, query == NULL ? "" : query);
     if( pipe(fdToCgi) != 0 )
         log_fatal("pipe");
     if( pipe(fdFromCgi) != 0 )
@@ -157,7 +172,7 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath)
         dup2(fdFromCgi[1], 1);
         close(fdFromCgi[0]);
         close(fdFromCgi[1]);
-        runCgi(hdr, exePath);   /* does not return */
+        runCgi(hdr, exePath, scriptName, pathInfo);   /* does not return */
     default:
         break;
     }

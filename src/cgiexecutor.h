@@ -10,8 +10,13 @@ typedef struct CgiExecutor CgiExecutor;
 
 
 /* Creates a new CgiExecutor object.
+ * Parameters:
+ *      exePath     - path to CGI executable
+ *      scriptName  - CGI $SCRIPT_NAME value
+ *      pathInfo    - CGI $PATH_INFO value
  */
-CgiExecutor *cgiexe_new(const RequestHeader*, const char *exePath);
+CgiExecutor *cgiexe_new(const RequestHeader*, const char *exePath,
+        const char *scriptName, const char *pathInfo);
 
 
 /* Processes the data chunk arrived.

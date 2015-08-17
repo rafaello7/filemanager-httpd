@@ -34,10 +34,18 @@ int reqhdr_appendData(RequestHeader*, const char *data, unsigned len);
 const char *reqhdr_getMethod(const RequestHeader*);
 
 
-/* Returns path specified in request line.
+/* Returns path specified in request line (without query part).
  * The returned path is already decoded.
  */
 const char *reqhdr_getPath(const RequestHeader*);
+
+
+/* Returns query part of path from request line. Returns NULL when the
+ * path does not contain query part.
+ * Unlike path returned by reqhdr_getPath(), this function result is not
+ * decoded.
+ */
+const char *reqhdr_getQuery(const RequestHeader*);
 
 
 /* If the idx does exceed the size of header array, returns false.
