@@ -11,26 +11,18 @@
 #include <sys/stat.h>
 
 struct RespBuf {
-    const char *statusStr;
     MemBuf *header;
     MemBuf *body;
     int fileDesc;
 };
 
-RespBuf *resp_new(HttpStatus status, bool onlyHead)
+const char *resp_cmnStatus(HttpStatus status)
 {
-    RespBuf *resp;
     const char *statusStr;
 
     switch( status ) {
     case HTTP_200_OK:
         statusStr = "200 OK";
-        break;
-    case HTTP_301_MOVED_PERMANENTLY:
-        statusStr = "301 Moved Permanently";
-        break;
-    case HTTP_401_UNAUTHORIZED:
-        statusStr = "401 Unauthorized";
         break;
     case HTTP_403_FORBIDDEN:
         statusStr = "403 Forbidden";
@@ -38,27 +30,25 @@ RespBuf *resp_new(HttpStatus status, bool onlyHead)
     case HTTP_404_NOT_FOUND:
         statusStr = "404 Not Found";
         break;
-    case HTTP_405_METHOD_NOT_ALLOWED:
-        statusStr = "405 Method Not Allowed";
-        break;
     default:
         statusStr = "500 Internal Server Error";
         break;
     }
+    return statusStr;
+}
+
+RespBuf *resp_new(const char *status, bool onlyHead)
+{
+    RespBuf *resp;
+
     resp = malloc(sizeof(RespBuf));
-    resp->statusStr = statusStr;
     resp->header = mb_new();
     resp->body = onlyHead ? NULL : mb_new();
     resp->fileDesc = -1;
     mb_appendStr(resp->header, "HTTP/1.1 ");
-    mb_appendStr(resp->header, statusStr);
+    mb_appendStr(resp->header, status);
     mb_appendStr(resp->header, "\r\n");
     return resp;
-}
-
-const char *resp_getErrorMessage(RespBuf *resp)
-{
-    return resp->statusStr;
 }
 
 void resp_appendHeader(RespBuf *resp, const char *name, const char *value)

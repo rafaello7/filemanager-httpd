@@ -13,26 +13,18 @@ typedef struct RespBuf RespBuf;
 
 typedef enum {
     HTTP_200_OK                     = 200,
-    HTTP_301_MOVED_PERMANENTLY      = 301,
-    HTTP_401_UNAUTHORIZED           = 401,
     HTTP_403_FORBIDDEN              = 403,
     HTTP_404_NOT_FOUND              = 404,
-    HTTP_405_METHOD_NOT_ALLOWED     = 405,
     HTTP_500                        = 500   /* Internal server error */
 } HttpStatus;
 
+
+const char *resp_cmnStatus(HttpStatus);
+
+
 /* Creates a new response.
- * Parameter sysErrno may be:
- *  >= 0    - errno value indicating the error
- *  < 0     - negated HTTP error, e.g. -405 for HTTP error 405
  */
-RespBuf *resp_new(HttpStatus, bool onlyHead);
-
-
-/* Returns error message associated with sysErrno given in resp_new().
- * Returns NULL when sysErrno was 0.
- */
-const char *resp_getErrorMessage(RespBuf*);
+RespBuf *resp_new(const char *status, bool onlyHead);
 
 
 /* Adds header to response

@@ -6,7 +6,7 @@
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Tiny http server with remote file management
-# Description:       Tiny http server (serves only static contents)
+# Description:       Tiny http server with CGI support and
 #                    with buiilt-in possibility to manage files
 #                    using web browser.
 ### END INIT INFO

@@ -10,5 +10,5 @@ Package: filemanager-httpd
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Tiny http server with file management via web
- Tiny http server (serves only static contents) with built-in
+ Tiny http server with CGI support and with built-in
  possibility to manage files using web browser.

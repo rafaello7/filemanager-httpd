@@ -31,7 +31,7 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     int len;
     RespBuf *resp;
 
-    resp = resp_new(HTTP_301_MOVED_PERMANENTLY, onlyHead);
+    resp = resp_new("301 Moved Permanently", onlyHead);
     len = strlen(urlPath);
     newPath = malloc(len+2);
     memcpy(newPath, urlPath, len);
@@ -54,7 +54,7 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     return resp;
 }
 
-static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
+static RespBuf *printMesgPage(const char *status, const char *mesg,
         const char *path, bool onlyHead, bool showLoginButton)
 {
     char hostname[HOST_NAME_MAX];
@@ -75,7 +75,7 @@ static RespBuf *printMesgPage(HttpStatus status, const char *mesg,
             "&nbsp;<div style=\"text-align: center; margin: 150px 0px\">\n"
             "<span style=\"font-size: x-large; border: 1px solid #FFF0B0; "
             "background-color: #FFFCF0; padding: 50px 100px\">\n");
-        resp_appendStr(resp, resp_getErrorMessage(resp)),
+        resp_appendStr(resp, status),
         resp_appendStr(resp, "</span></div>\n");
         if( mesg != NULL ) {
             resp_appendStr(resp, "<p>");
@@ -110,7 +110,8 @@ static RespBuf *printErrorPage(int sysErrno, const char *path,
         mesg = strerror(sysErrno);
         break;
     }
-    return printMesgPage(status, mesg, path, onlyHead, showLoginButton);
+    return printMesgPage(resp_cmnStatus(status), mesg, path, onlyHead,
+            showLoginButton);
 }
 
 static RespBuf *printUnauthorized(const char *urlPath, bool onlyHead)
@@ -118,7 +119,7 @@ static RespBuf *printUnauthorized(const char *urlPath, bool onlyHead)
     char *authHeader;
     RespBuf *resp;
 
-    resp = printMesgPage(HTTP_401_UNAUTHORIZED, NULL, urlPath, onlyHead, false);
+    resp = printMesgPage("401 Unauthorized", NULL, urlPath, onlyHead, false);
     authHeader = auth_getAuthResponseHeader();
     resp_appendHeader(resp, "WWW-Authenticate", authHeader);
     free(authHeader);
@@ -134,7 +135,7 @@ static RespBuf *processFileReq(const char *urlPath, const char *sysPath,
 
     if( (fd = open(sysPath, O_RDONLY)) >= 0 ) {
         log_debug("opened %s", sysPath);
-        resp = resp_new(HTTP_200_OK, onlyHead);
+        resp = resp_new(resp_cmnStatus(HTTP_200_OK), onlyHead);
         resp_appendHeader(resp, "Content-Type",
                 cttype_getContentTypeByFileExt(sysPath));
         if( onlyHead ) {
@@ -201,8 +202,8 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
     }else if( queryFileLen >= 3 && (strstr(queryFile, "/../") != NULL ||
             !strcmp(queryFile+queryFileLen-3, "/.."))) 
     {
-        resp = printMesgPage(HTTP_403_FORBIDDEN, NULL, queryFile,
-                isHeadReq, false);
+        resp = printMesgPage(resp_cmnStatus(HTTP_403_FORBIDDEN), NULL,
+                queryFile, isHeadReq, false);
     }else{
         int sysErrNo = 0;
         struct stat st;
@@ -278,7 +279,7 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr, const char *peerAddr)
     handler->filemgr = NULL;
     handler->cgiexe = NULL;
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
-        resp = resp_new(HTTP_405_METHOD_NOT_ALLOWED, isHeadReq);
+        resp = resp_new("405 Method Not Allowed", isHeadReq);
         resp_appendHeader(resp, "Allow", "GET, HEAD, POST");
     }else{
         resp = doProcessRequest(handler, rhdr);
@@ -313,7 +314,7 @@ void reqhdlr_requestReadCompleted(RequestHandler *hdlr,
         if( hdlr->filemgr != NULL ) {
             resp = processFolderReq(rhdr, hdlr->filemgr);
         }else
-            resp = printMesgPage(HTTP_500,
+            resp = printMesgPage(resp_cmnStatus(HTTP_500),
                     "reqhandler: unspecified handler",
                     reqhdr_getPath(rhdr), isHeadReq, false);
         hdlr->response = resp_finish(resp);

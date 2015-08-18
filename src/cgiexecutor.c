@@ -235,24 +235,37 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
 {
     RespBuf *resp = NULL;
     char buf[4096];
-    int offset = -1, rd;
-    const char *headerVal;
+    int i, offset = -1, rd;
+    const char *headerName, *headerVal;
 
     while( offset < 0 && (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
         offset = datahdr_appendData(cgiexe->cgiHeader, buf, rd, "CGI response");
     }
     if( offset >= 0 ) {
-        resp = resp_new(HTTP_200_OK, cgiexe->onlyHead);
+        headerVal = datahdr_getHeaderVal(cgiexe->cgiHeader, "Status");
+        if( headerVal == NULL )
+            headerVal = resp_cmnStatus(HTTP_200_OK);
+        resp = resp_new(headerVal, cgiexe->onlyHead);
         headerVal = datahdr_getHeaderVal(cgiexe->cgiHeader, "Content-Type");
         resp_appendHeader(resp, "Content-Type",
                 headerVal ? headerVal : "text/plain");
+        for(i = 0; datahdr_getHeaderLineAt(cgiexe->cgiHeader, i,
+                    &headerName, &headerVal); ++i)
+        {
+            if( strcasecmp(headerName, "Status") &&
+                    strcasecmp(headerName, "Content-Type") &&
+                    strncasecmp(headerName, "X-CGI-", 6) )
+            {
+                resp_appendHeader(resp, headerName, headerVal);
+            }
+        }
         resp_appendData(resp, buf + offset, rd - offset);
         resp_enqFile(resp, cgiexe->inFd);
         cgiexe->inFd = -1;
     }else if( rd == 0 ) { /* incomplete header in CGI response */
         close(cgiexe->inFd);
         cgiexe->inFd = -1;
-        resp = resp_new(HTTP_500, cgiexe->onlyHead);
+        resp = resp_new(resp_cmnStatus(HTTP_500), cgiexe->onlyHead);
         resp_appendHeader(resp, "Content-Type", "text/html");
         resp_appendStr(resp, "<html><head>\n"
                 "<title>Internal Server Error</title>\n</head>\n"
