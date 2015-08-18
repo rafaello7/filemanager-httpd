@@ -211,7 +211,6 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
         bool isFolder = false, isCGI = false;
 
         sysPath = config_getSysPathForUrlPath(queryFile);
-        printf(">>> sysPath=%s\n", sysPath);
         if( sysPath != NULL ) {
             if( stat(sysPath, &st) == 0 ) {
                 isFolder = S_ISDIR(st.st_mode);
@@ -220,7 +219,6 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
                 char *cgiExe;
 
                 sysErrNo = errno;
-                printf(">>> errno = %d\n", sysErrNo);
                 if( sysErrNo == ENOTDIR && (isCGI = config_findCGI(queryFile,
                                 &cgiExe, &cgiUrl, &cgiSubPath)) )
                 {

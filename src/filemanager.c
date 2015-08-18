@@ -292,7 +292,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     if( onlyHead )
         return resp;
     dch_initWithStr(&dchUrlPath, urlPath);
-    dch_trimTrailing(&dchUrlPath, "/");
+    dch_trimTrailing(&dchUrlPath, '/');
     gethostname(hostname, sizeof(hostname));
     /* head, title */
     resp_appendStr(resp, "<html><head><title>");

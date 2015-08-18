@@ -41,14 +41,15 @@ bool dch_shift(DataChunk*, unsigned size);
 bool dch_shiftAfterChr(DataChunk*, char);
 
 
-/* Moves begin of data chunk forward, skipping characters specified in str
+/* Moves begin of data chunk forward, skipping the specified character
+ * occurrences.
  */
-void dch_skipLeading(DataChunk*, const char *str);
+void dch_skipLeading(DataChunk*, char);
 
 
-/* Removes from chunk trailing characters specified in str.
+/* Removes from chunk the trailing character occurrences.
  */
-void dch_trimTrailing(DataChunk*, const char *str);
+void dch_trimTrailing(DataChunk*, char);
 
 
 /* Removes from chunk leading and trailing white spaces.

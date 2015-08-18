@@ -45,25 +45,39 @@ bool dch_shiftAfterChr(DataChunk *dch, char c)
     return true;
 }
 
-void dch_skipLeading(DataChunk *dch, const char *str)
+void dch_skipLeading(DataChunk *dch, char c)
 {
-    while( dch->len > 0 && *dch->data && strchr(str, *dch->data) ) {
+    while( dch->len && *dch->data == c ) {
         ++dch->data;
         --dch->len;
     }
 }
 
-void dch_trimTrailing(DataChunk *dch, const char *str)
+void dch_trimTrailing(DataChunk *dch, char c)
+{
+    while( dch->len && dch->data[dch->len-1] == c )
+        --dch->len;
+}
+
+static void skipLeadingWS(DataChunk *dch)
+{
+    while( dch->len > 0 && *dch->data && strchr(gWhiteSpaces, *dch->data) ) {
+        ++dch->data;
+        --dch->len;
+    }
+}
+
+static void trimTrailingWS(DataChunk *dch)
 {
     while( dch->len > 0 && dch->data[dch->len-1] &&
-            strchr(str, dch->data[dch->len-1]) )
+            strchr(gWhiteSpaces, dch->data[dch->len-1]) )
         --dch->len;
 }
 
 void dch_trimWS(DataChunk *dch)
 {
-    dch_skipLeading(dch, gWhiteSpaces);
-    dch_trimTrailing(dch, gWhiteSpaces);
+    skipLeadingWS(dch);
+    trimTrailingWS(dch);
 }
 
 void dch_dirNameOf(const DataChunk *fileName, DataChunk *dirName)
@@ -89,14 +103,14 @@ bool dch_extractParam(DataChunk *paramLine, DataChunk *nameBuf,
 
     if( (res = dch_extractTillChr(paramLine, nameBuf, '=')) ) {
         dch_trimWS(nameBuf);
-        dch_skipLeading(paramLine, gWhiteSpaces);
+        skipLeadingWS(paramLine);
         if( paramLine->len > 0 && paramLine->data[0] == '"' ) {
             dch_shift(paramLine, 1);
             dch_extractTillChr(paramLine, valueBuf, '\"');
             dch_shiftAfterChr(paramLine, delimiter);
         }else{
             dch_extractTillChr(paramLine, valueBuf, delimiter);
-            dch_trimTrailing(valueBuf, gWhiteSpaces);
+            trimTrailingWS(valueBuf);
         }
     }
     return res;
@@ -126,15 +140,15 @@ bool dch_extractTillChrStripWS(DataChunk *dch, DataChunk *subChunk,
     bool res = dch_extractTillChr(dch, subChunk, delimiter);
 
     if( res ) {
-        dch_skipLeading(dch, gWhiteSpaces);
-        dch_trimTrailing(subChunk, gWhiteSpaces);
+        skipLeadingWS(dch);
+        trimTrailingWS(subChunk);
     }
     return res;
 }
 
 bool dch_extractTillWS(DataChunk *dch, DataChunk *subChunk)
 {
-    dch_skipLeading(dch, gWhiteSpaces);
+    skipLeadingWS(dch);
     if( dch->len > 0 ) {
         subChunk->data = dch->data;
         while( dch->len > 0 &&
@@ -144,7 +158,7 @@ bool dch_extractTillWS(DataChunk *dch, DataChunk *subChunk)
             --dch->len;
         }
         subChunk->len = dch->data - subChunk->data;
-        dch_skipLeading(dch, gWhiteSpaces);
+        skipLeadingWS(dch);
         return true;
     }
     dch_clear(subChunk);

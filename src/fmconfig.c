@@ -76,9 +76,9 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
                 if( dch_startsWithStr(&dchName, "/") ) {
                     gShares = realloc(gShares,
                             (*shareCount+1) * sizeof(Share));
-                    dch_trimTrailing(&dchName, "/");
+                    dch_trimTrailing(&dchName, '/');
                     gShares[*shareCount].urlpath = dch_dupToStr(&dchName);
-                    dch_trimTrailing(&dchValue, "/");
+                    dch_trimTrailing(&dchValue, '/');
                     gShares[*shareCount].syspath = dch_dupToStr(&dchValue);
                     ++*shareCount;
                 }else if( dch_equalsStr(&dchName, "index") ) {
@@ -223,9 +223,9 @@ char *config_getSysPathForUrlPath(const char *urlPath)
     const Share *cur, *best = NULL;
     int urlPathLen, bestShLen = -1;
 
+    if( !strcmp(urlPath, "/" ) )
+        urlPath = "";
     urlPathLen = strlen(urlPath);
-//    while( urlPathLen > 0 && urlPath[urlPathLen-1] == '/' )
-//        --urlPathLen;
     for(cur = gShares; cur->urlpath; ++cur) {
         int shLen = strlen(cur->urlpath);
         if( shLen > urlPathLen || shLen <= bestShLen )
@@ -267,7 +267,7 @@ Folder *config_getSubSharesForPath(const char *urlPath)
                 cur->urlpath[pathLen] == '/')
         {
             dch_initWithStr(&dchPath, cur->urlpath + pathLen + 1);
-            dch_skipLeading(&dchPath, "/");
+            dch_skipLeading(&dchPath, '/');
             if( dchPath.len > 0 ) {
                 dch_extractTillChr(&dchPath, &ent, '/');
                 if( folder == NULL )
@@ -362,11 +362,11 @@ bool config_findCGI(const char *urlPath, char **cgiExeBuf, char **cgiUrlBuf,
             (cgiExe = config_getSysPathForUrlPath(cgiUrl)) != NULL &&
             stat(cgiExe, &st) == 0 && S_ISREG(st.st_mode);
     if( ! isCGI ) {
-        if( (slashPos = strrchr(cgiUrl, '/')) == NULL )
-            slashPos = cgiUrl;
-        while( ! isCGI && slashPos != cgiUrl ) {
+        free(cgiExe);
+        slashPos = strrchr(cgiUrl, '/');
+        while( ! isCGI && slashPos != NULL ) {
             *slashPos = '\0';
-            if( config_isCGI(cgiUrl) ) {
+            if( config_isCGI(cgiUrl[0] ? cgiUrl : "/") ) {
                 cgiExe = config_getSysPathForUrlPath(cgiUrl);
                 if( cgiExe != NULL && stat(cgiExe, &st) == 0 &&
                         S_ISREG(st.st_mode) )
@@ -377,7 +377,8 @@ bool config_findCGI(const char *urlPath, char **cgiExeBuf, char **cgiUrlBuf,
                     free(cgiExe);
             }
             *slashPos = '/';
-            while( slashPos != cgiUrl && *--slashPos != '/' )
+            while( (slashPos = slashPos == cgiUrl ? NULL : slashPos - 1) &&
+                    *slashPos != '/')
                 ;
         }
     }
