@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <limits.h>
+#include <libgen.h>
 
 
 struct CgiExecutor {
@@ -107,9 +109,10 @@ static void putHeader(char ***envpLoc, const char *headerName,
 }
 
 static void runCgi(const RequestHeader *hdr, const char *exePath,
-        const char *scriptName, const char *pathInfo)
+        const char *peerAddr, const char *scriptName, const char *pathInfo)
 {
     const char *arg0, *headerName, *headerVal, *contentLength = NULL;
+    char hostname[HOST_NAME_MAX], portnum[8];
     char ctLenBuf[10];
     char **argv, **envp = NULL;
     unsigned i;
@@ -129,6 +132,10 @@ static void runCgi(const RequestHeader *hdr, const char *exePath,
     }
     if( (headerVal = reqhdr_getQuery(hdr)) != NULL )
         appendEnv(&envp, "QUERY_STRING", headerVal);
+    if( peerAddr != NULL ) {
+        appendEnv(&envp, "REMOTE_ADDR", peerAddr);
+        appendEnv(&envp, "REMOTE_HOST", peerAddr);
+    }
     appendEnv(&envp, "REQUEST_METHOD", reqhdr_getMethod(hdr));
     if( scriptName != NULL )
         appendEnv(&envp, "SCRIPT_NAME", scriptName);
@@ -140,16 +147,23 @@ static void runCgi(const RequestHeader *hdr, const char *exePath,
         }else
             putHeader(&envp, headerName, headerVal);
     }
+    if( gethostname(hostname, sizeof(hostname)) == 0 )
+        appendEnv(&envp, "SERVER_NAME", hostname);
+    sprintf(portnum, "%u", config_getListenPort());
+    appendEnv(&envp, "SERVER_PORT", portnum);
+    appendEnv(&envp, "SERVER_PROTOCOL", "HTTP/1.1");
+    appendEnv(&envp, "SERVER_SOFTWARE", "filemanager-httpd");
     if( contentLength == NULL && reqhdr_isChunkedTransferEncoding(hdr) )
         contentLength = handleNoContentLength(ctLenBuf);
     if( contentLength != NULL )
         appendEnv(&envp, "CONTENT_LENGTH", contentLength);
+    chdir( dirname( strdup(exePath)) );
     execve(exePath, argv, envp);
     fatalErrorResp("unable to execute CGI", NULL);
 }
 
 CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath,
-        const char *scriptName, const char *pathInfo)
+        const char *peerAddr, const char *scriptName, const char *pathInfo)
 {
     CgiExecutor *cgiexe = malloc(sizeof(CgiExecutor));
     int fdToCgi[2], fdFromCgi[2];
@@ -172,7 +186,8 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath,
         dup2(fdFromCgi[1], 1);
         close(fdFromCgi[0]);
         close(fdFromCgi[1]);
-        runCgi(hdr, exePath, scriptName, pathInfo);   /* does not return */
+        runCgi(hdr, exePath, peerAddr, scriptName, pathInfo);
+        /* does not return */
     default:
         break;
     }

@@ -11,7 +11,7 @@ typedef struct RequestHandler RequestHandler;
 
 /* Creates a new request handler.
  */
-RequestHandler *reqhdlr_new(const RequestHeader*);
+RequestHandler *reqhdlr_new(const RequestHeader*, const char *peerAddr);
 
 
 /* Processes the piece of request body.

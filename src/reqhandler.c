@@ -18,6 +18,7 @@
 
 
 struct RequestHandler {
+    char *peerAddr;
     FileManager *filemgr;
     CgiExecutor *cgiexe;
     ResponseSender *response;
@@ -249,7 +250,7 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
                 if( isFolder ) {
                     hdlr->filemgr = filemgr_new(sysPath, rhdr);
                 }else if( isCGI ) {
-                    hdlr->cgiexe = cgiexe_new(rhdr, sysPath,
+                    hdlr->cgiexe = cgiexe_new(rhdr, sysPath, hdlr->peerAddr,
                             cgiUrl == NULL ? queryFile : cgiUrl, cgiSubPath);
                 }else{
                     resp = processFileReq(queryFile, sysPath, isHeadReq);
@@ -266,13 +267,14 @@ static RespBuf *doProcessRequest(RequestHandler *hdlr,
     return resp;
 }
 
-RequestHandler *reqhdlr_new(const RequestHeader *rhdr)
+RequestHandler *reqhdlr_new(const RequestHeader *rhdr, const char *peerAddr)
 {
     RequestHandler *handler = malloc(sizeof(RequestHandler));
     const char *meth = reqhdr_getMethod(rhdr);
     RespBuf *resp = NULL;
     bool isHeadReq = ! strcmp(meth, "HEAD");
 
+    handler->peerAddr = peerAddr ? strdup(peerAddr) : NULL;
     handler->filemgr = NULL;
     handler->cgiexe = NULL;
     if( strcmp(meth, "GET") && strcmp(meth, "POST") && ! isHeadReq ) {
@@ -337,6 +339,7 @@ bool reqhdlr_progressResponse(RequestHandler *hdlr, int fd,
 void reqhdlr_free(RequestHandler *hdlr)
 {
     if( hdlr != NULL ) {
+        free(hdlr->peerAddr);
         filemgr_free(hdlr->filemgr);
         cgiexe_free(hdlr->cgiexe);
         rsndr_free(hdlr->response);

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <arpa/inet.h>
 
 
 enum RequestReadState {
@@ -48,9 +49,15 @@ ServerConnection *conn_new(int socketFd)
 
 static void onFinishedHeader(ServerConnection *conn)
 {
-    const char *val;
+    const char *val = NULL;
+    struct sockaddr_in peer;
+    socklen_t peerAddrLen;
+    char peerAddrStr[INET_ADDRSTRLEN];
 
-    conn->handler = reqhdlr_new(conn->header);
+    peerAddrLen = sizeof(peer);
+    if(getpeername(conn->socketFd, (struct sockaddr*)&peer, &peerAddrLen) == 0)
+        val = inet_ntop(AF_INET, &peer.sin_addr, peerAddrStr, peerAddrLen);
+    conn->handler = reqhdlr_new(conn->header, val);
     if( reqhdr_isChunkedTransferEncoding(conn->header) ) {
         conn->chunkHdr = mb_newWithStr("\r\n");
         conn->rrs = RRS_READ_BODY;
