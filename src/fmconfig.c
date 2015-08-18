@@ -284,7 +284,8 @@ Folder *config_getSubSharesForPath(const char *urlPath)
             }
         }
     }
-    folder_sortEntries(folder);
+    if( folder != NULL )
+        folder_sortEntries(folder);
     return folder;
 }
 
