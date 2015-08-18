@@ -442,7 +442,7 @@ RespBuf *filemgr_printFolderContents(const FileManager *filemgr,
     Folder *folder;
     const char *queryFile = reqhdr_getPath(rhdr);
     bool isHeadReq = !strcmp(reqhdr_getMethod(rhdr), "HEAD");
-    RespBuf *resp;
+    RespBuf *resp = NULL;
     bool isModifiable = filemgr->sysPath == NULL ? 0 :
         reqhdr_isActionAllowed(rhdr, PA_MODIFY) &&
             access(filemgr->sysPath, W_OK) == 0;

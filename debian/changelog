@@ -1,3 +1,9 @@
+filemanager-httpd (0.3) unstable; urgency=medium
+
+  * Added CGI support
+
+ -- Rafal <fatwildcat@gmail.com>  Tue, 18 Aug 2015 14:14:09 +0200
+
 filemanager-httpd (0.2) unstable; urgency=low
 
   * Added security
