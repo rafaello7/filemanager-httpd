@@ -59,6 +59,15 @@ static const char response_header[] =
     "            th = th.previousElementSibling;\n"
     "        return th != null && confirm('delete \"' + th.value + '\" ?');\n"
     "    }\n"
+    "    function showHideHidden(th) {\n"
+    "        var rows = document.getElementsByTagName('tr');\n"
+    "        for(var i = 0; i < rows.length; ++i) {\n"
+    "            var row = rows.item(i);\n"
+    "            if( row.getAttribute('class') == 'rhidden' ) {\n"
+    "                row.style.display = th.checked ? 'table-row' : 'none';\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
     "</script>\n"
     "<style>\n"
     "    body { background-color: #F2FAFC; }\n"
@@ -86,7 +95,7 @@ static const char response_header[] =
     "        padding: 0px 3px;\n"
     "        cursor: default;\n"
     "    }\n"
-    "    td {\n"
+    "    table.folder td {\n"
     "        border-color: #ded4f2;\n"
     "        border-width: 1px;\n"
     "        border-bottom-style: solid;\n"
@@ -94,7 +103,7 @@ static const char response_header[] =
     "</style>\n";
 
 static const char response_login_button[] =
-    "<form style=\"float: right\" method=\"POST\" "
+    "<form style='display: inline' method=\"POST\" "
     "enctype=\"multipart/form-data\">\n"
     "<input type=\"submit\" name=\"do_login\" value=\"Login\">\n"
     "</form>\n";
@@ -277,6 +286,17 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
     return requireAuth ? PR_REQUIRE_AUTH : PR_PROCESSED;
 }
 
+static bool hasHiddenFiles(const Folder *folder)
+{
+    const FolderEntry *cur_ent;
+
+    for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
+        if( cur_ent->fileName[0] == '.' )
+            return true;
+    }
+    return false;
+}
+
 static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         bool isModifiable, bool showLoginButton, const char *opErrorMsg,
         bool onlyHead)
@@ -304,7 +324,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     resp_appendStrL(resp, " - File Manager</title>", response_header,
             "</head>\n<body>\n", NULL);
     /* host name as link to root */
-    resp_appendStr(resp, "<span style=\"font-size: large; font-weight: bold\">"
+    resp_appendStr(resp, "<table style='width: 100%'><tbody><tr>");
+    resp_appendStr(resp, "<td style=\"font-size: large; font-weight: bold\">"
             "<a href=\"/\">");
     resp_appendStrEscapeHtml(resp, hostname);
     resp_appendStr(resp, "</a>&emsp;");
@@ -320,9 +341,14 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendStr(resp, "</a>");
         pathElemBeg = dch_endOfSpan(&dchUrlPath, pathElemEnd, '/');
     }
-    resp_appendStr(resp, "</span>\n");
+    resp_appendStr(resp, "</td><td style='text-align: right'>");
+    if( hasHiddenFiles(folder) )
+        resp_appendStr(resp, "<label><input type='checkbox' name='showall' "
+                "onclick='showHideHidden(this)'></input>show hidden files"
+                "</label>");
     if( showLoginButton )
-        resp_appendStr(resp, response_login_button);
+        resp_appendStrL(resp, "&emsp;", response_login_button, NULL);
+    resp_appendStr(resp, "</td></tr></tbody></table>\n");
     /* error bar */
     if( opErrorMsg != NULL ) {
         resp_appendStr(resp,
@@ -331,7 +357,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendStrEscapeHtml(resp, opErrorMsg);
         resp_appendStr(resp, "</div>\n");
     }
-    resp_appendStr(resp, "<table><tbody>\n");
+    resp_appendStr(resp, "<table class='folder'><tbody>\n");
     /* link to parent - " .. " */
     if( dchUrlPath.len ) {
         resp_appendStrL(resp, "<tr>\n<td><span class=\"plusgray\">",
@@ -344,13 +370,17 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     }
     /* entry list */
     for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
+        if( cur_ent->fileName[0] == '.' )
+            resp_appendStr(resp, "<tr class='rhidden' style='display: none'>\n");
+        else
+            resp_appendStr(resp, "<tr>\n");
         /* colored square */
         if( isModifiable ) {
-            resp_appendStrL(resp, "<tr>\n<td onclick=\"showOptions(this)\">"
+            resp_appendStrL(resp, "<td onclick=\"showOptions(this)\">"
                     "<span class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
                     "\">+</span></td>\n", NULL);
         }else{
-            resp_appendStrL(resp, "<tr>\n<td><span class=\"",
+            resp_appendStrL(resp, "<td><span class=\"",
                     cur_ent->isDir ? "plusdir" : "plusfile",
                     "\">&sdot;</span></td>\n", NULL);
         }

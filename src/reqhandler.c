@@ -69,8 +69,11 @@ static RespBuf *printMesgPage(const char *status, const char *mesg,
         resp_appendStr(resp, " on ");
         resp_appendStrEscapeHtml(resp, hostname);
         resp_appendStr(resp, "</title></head><body>\n");
-        if( showLoginButton )
+        if( showLoginButton ) {
+            resp_appendStr(resp, "<div style='text-align: right'>");
             resp_appendStr(resp, filemgr_getLoginForm());
+            resp_appendStr(resp, "</div>\n");
+        }
         resp_appendStr(resp,
             "&nbsp;<div style=\"text-align: center; margin: 150px 0px\">\n"
             "<span style=\"font-size: x-large; border: 1px solid #FFF0B0; "
