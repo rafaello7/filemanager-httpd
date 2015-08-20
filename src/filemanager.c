@@ -411,6 +411,8 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
         }
     }else
         opErr = fmtError(0, "unrecognized request", NULL);
+    mpdata_free(filemgr->body);
+    filemgr->body = NULL;
     filemgr->opErrorMsg = mb_unbox_free(opErr);
     return requireAuth ? PR_REQUIRE_AUTH : PR_PROCESSED;
 }
