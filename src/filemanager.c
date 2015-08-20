@@ -319,10 +319,9 @@ static MemBuf *delete_file(const char *sysPath, const char *fname,
             opRes = del_recursive(path, &sysErrNo);
         }else{
             log_debug("delete: %s", path);
-            if( (opRes = unlink(path)) != 0 && errno == EISDIR ) {
+            if( (opRes = unlink(path)) != 0 && errno == EISDIR )
                 opRes = rmdir(path);
-                sysErrNo = errno;
-            }
+            sysErrNo = errno;
         }
         if( opRes != 0 )
             res = fmtError(sysErrNo, "delete ", fname, " failed", NULL);
