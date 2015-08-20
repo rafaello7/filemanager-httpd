@@ -107,9 +107,18 @@ static const char response_header[] =
     "    }\n"
     "    table.fattr td {\n"
     "        background: #e0f0f9;\n"
-    "        padding: 3px 1ex;\n"
+    "        padding: 3px 6px;\n"
     "    }\n"
     "    table.fattr input[type='submit'] {\n"
+    "        width: 100%;\n"
+    "    }\n"
+    "    table.fattr input[name='new_name'] {\n"
+    "        width: 20em;\n"
+    "    }\n"
+    "    table.diracns td {\n"
+    "        padding: 2px 4px;\n"
+    "    }\n"
+    "    table.diracns input {\n"
     "        width: 100%;\n"
     "    }\n"
     "</style>\n";
@@ -122,17 +131,15 @@ static const char response_login_button[] =
 
 static const char response_footer[] =
     "<p><hr></p>\n"
-    "<form method=\"POST\" enctype=\"multipart/form-data\">\n"
-    "<table><tbody>\n"
-    "<tr><td style=\"text-align: right\">new directory:</td>\n"
-    "<td><input style=\"width: 100%\" name=\"new_dir\"/></td>\n"
-    "<td><input style=\"width: 100%\" type=\"submit\" name=\"do_newdir\" "
-    "value=\"Create\"/></td></tr>\n"
-    "<tr><td style=\"text-align: right\">add file:</td>\n"
-    "<td><input type=\"file\" name=\"file\"/></td>\n"
-    "<td><input style=\"width: 100%\" type=\"submit\" name=\"do_upload\" "
-    "value=\"Add\"/></td></tr>\n"
-    "</tbody></table></form>\n";
+    "<form method='POST' enctype='multipart/form-data'>\n"
+    "<table class='diracns'><tbody>\n"
+    "<tr><td>new directory:</td>\n"
+    "<td><input name='new_dir'/></td>\n"
+    "<td><input type='submit' name='do_newdir' value='Create'/></td>\n"
+    "</tr><tr><td>add file:</td>\n"
+    "<td><input type='file' name='file'/></td>\n"
+    "<td><input type='submit' name='do_upload' value='Add'/></td>\n"
+    "</tr></tbody></table></form>\n";
 
 
 static const char *gFilePermDisp[] = {
@@ -556,7 +563,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             resp_appendStr(resp, "\"/>\n<table class='fattr'><tbody>");
             /* first row - "new name:" */
             resp_appendStr(resp, "<tr><td>new name:</td>\n"
-                    "<td><select name='new_dir'>\n");
+                    "<td colspan='3'><select name='new_dir'>\n");
             pathElemEnd = 0;
             while( pathElemEnd < dchUrlPath.len ) {
                 pathElemBeg = dch_endOfSpan(&dchUrlPath, pathElemEnd, '/');
@@ -578,15 +585,15 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                     resp_appendStr(resp, "/</option>\n");
                 }
             }
-            resp_appendStr(resp, "</select><input name=\"new_name\" value=\"");
+            resp_appendStr(resp, "</select> <input name='new_name' value=\"");
             resp_appendStrEscapeHtml(resp, cur_ent->fileName);
             resp_appendStr(resp, "\"/></td>"
                     "<td><input type=\"submit\" "
                     "name=\"do_rename\" value=\"Rename\"/></td></tr>\n");
             /* second row - "permissions:" */
-            resp_appendStr(resp, "<tr><td>permissions:</td><td>");
+            resp_appendStr(resp, "<tr><td>permissions:</td>");
             for(i = 0; i < PERM_GROUP_COUNT; ++i) {
-                resp_appendStrL(resp, gFilePerm[i].name,
+                resp_appendStrL(resp, "<td>", gFilePerm[i].name,
                         ": <select name='p", gFilePerm[i].name, "'>\n", NULL);
                 for(j = 0; j < PERM_DISP_CNT; ++j) {
                     resp_appendStrL(resp, "<option", 
@@ -594,13 +601,12 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                             gFilePerm[i].value[j] ? " selected" : "", ">",
                             gFilePermDisp[j], "</option>\n", NULL);
                 }
-                resp_appendStr(resp, "</select>\n");
+                resp_appendStr(resp, "</select></td>\n");
             }
-            resp_appendStr(resp, "</td>\n"
-                    "<td><input type=\"submit\" "
+            resp_appendStr(resp, "<td><input type=\"submit\" "
                     "name='do_perm' value='Change'/></td></tr>\n");
             /* 3rd row - "delete:" */
-            resp_appendStr(resp, "<tr><td>delete:</td>\n<td>");
+            resp_appendStr(resp, "<tr><td>delete:</td>\n<td colspan='3'>");
             if( cur_ent->isDir ) {
                 resp_appendStr(resp, "<label>"
                     "<input type='checkbox' name='del_recursive'/>"
