@@ -138,7 +138,7 @@ static const char response_footer[] =
     "<td><input type='submit' name='do_newdir' value='Create'/></td>\n"
     "</tr><tr><td>add file:</td>\n"
     "<td><input type='file' name='file'/></td>\n"
-    "<td><input type='submit' name='do_upload' value='Add'/></td>\n"
+    "<td><input type='submit' name='do_add' value='Add'/></td>\n"
     "</tr></tbody></table></form>\n";
 
 
@@ -198,7 +198,7 @@ static MemBuf *fmtError(int sysErrno, const char *str1, const char *str2, ...)
 }
 
 
-static MemBuf *upload_file(ContentPart *partFile)
+static MemBuf *add_new_file(ContentPart *partFile)
 {
     MemBuf *res = NULL;
     const char *fname = cpart_getFileName(partFile);
@@ -206,7 +206,7 @@ static MemBuf *upload_file(ContentPart *partFile)
 
     if( fname != NULL ) {
         const char *pathName = cpart_getFilePathName(partFile);
-        if( cpart_finishUpload(partFile, &sysErrNo) ) {
+        if( cpart_finishUpload(partFile, NULL, false, &sysErrNo) ) {
             log_debug("upload: added file %s", pathName);
         }else{
             if( pathName != NULL )
@@ -214,10 +214,10 @@ static MemBuf *upload_file(ContentPart *partFile)
                         pathName, sysErrNo, strerror(sysErrNo));
             else
                 log_debug("upload: no target dir for %s", fname);
-            res = fmtError(sysErrNo, "unable to save ", fname, NULL);
+            res = fmtError(sysErrNo, "unable to store ", fname, NULL);
         }
     }else
-        res = fmtError(0, "unable to add file with empty name", NULL);
+        res = fmtError(0, "unable to add: no file chosen", NULL);
     return res;
 }
 
@@ -330,6 +330,28 @@ static MemBuf *delete_file(const char *sysPath, const char *fname,
     return res;
 }
 
+static MemBuf *replace_file(const char *sysPath, const char *fname,
+        ContentPart *partFile)
+{
+    MemBuf *res = NULL;
+    const char *tmpPath = cpart_getFilePathName(partFile);
+    int sysErrNo;
+
+    if( fname != NULL && tmpPath != NULL ) {
+        char *filePath = format_path(sysPath, fname);
+        if( cpart_finishUpload(partFile, filePath, true, &sysErrNo) ) {
+            log_debug("replace: replaced file %s", filePath);
+        }else{
+            log_debug("upload: failed to create %s, errno=%d (%s)",
+                        filePath, sysErrNo, strerror(sysErrNo));
+            res = fmtError(sysErrNo, "unable to store ", fname, NULL);
+        }
+        free(filePath);
+    }else
+        res = fmtError(0, "unable to replace: no file chosen", NULL);
+    return res;
+}
+
 static MemBuf *chmod_file(const char *sysPath, const char *fname,
         const char *puser, const char *pgroup, const char *pothers)
 {
@@ -367,7 +389,7 @@ static MemBuf *chmod_file(const char *sysPath, const char *fname,
 enum PostingResult filemgr_processPost(FileManager *filemgr,
         const RequestHeader *rhdr)
 {
-    ContentPart *file_part, *newdir_part, *newname_part;
+    ContentPart *file_part, *newdir_part, *newname_part, *newcont_part;
     ContentPart *puser_part, *pgroup_part, *pothers_part;
     MemBuf *opErr = NULL;
     bool requireAuth = false;
@@ -386,8 +408,9 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
             puser_part = mpdata_getPartByName(filemgr->body, "puser");
             pgroup_part = mpdata_getPartByName(filemgr->body, "pgroup");
             pothers_part = mpdata_getPartByName(filemgr->body, "pothers");
-            if( mpdata_containsPartWithName(filemgr->body, "do_upload") ) {
-                opErr = upload_file(file_part);
+            newcont_part = mpdata_getPartByName(filemgr->body, "new_cont");
+            if( mpdata_containsPartWithName(filemgr->body, "do_add") ) {
+                opErr = add_new_file(file_part);
             }else if(mpdata_containsPartWithName(filemgr->body, "do_rename")) {
                 opErr = rename_file(filemgr->sysPath,
                         cpart_getDataStr(file_part),
@@ -396,6 +419,9 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
             }else if(mpdata_containsPartWithName(filemgr->body, "do_newdir")) {
                 opErr = create_newdir(filemgr->sysPath,
                         cpart_getDataStr(newdir_part));
+            }else if(mpdata_containsPartWithName(filemgr->body, "do_replace")) {
+                opErr = replace_file(filemgr->sysPath,
+                        cpart_getDataStr(file_part), newcont_part);
             }else if(mpdata_containsPartWithName(filemgr->body, "do_delete")) {
                 opErr = delete_file(filemgr->sysPath,
                         cpart_getDataStr(file_part),
@@ -606,7 +632,12 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             }
             resp_appendStr(resp, "<td><input type=\"submit\" "
                     "name='do_perm' value='Change'/></td></tr>\n");
-            /* 3rd row - "delete:" */
+            /* 3rd row - "replace with:" */
+            resp_appendStr(resp, "<tr><td>replace with:</td>\n"
+                    "<td colspan='3'><input type='file' name='new_cont'></td>"
+                    "<td><input type='submit' name='do_replace' "
+                    "value='Upload'/></td></tr>\n");
+            /* 4th row - "delete:" */
             resp_appendStr(resp, "<tr><td>delete:</td>\n<td colspan='3'>");
             if( cur_ent->isDir ) {
                 resp_appendStr(resp, "<label>"

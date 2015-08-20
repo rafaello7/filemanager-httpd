@@ -98,6 +98,12 @@ void mb_fillWithZeros(MemBuf*, unsigned offset, unsigned len);
 void mb_setStrEnd(MemBuf*, unsigned offset, const char *str);
 
 
+/* invokes mkstemp() with the buffer as parameter.
+ * Returns the mkstemp result. When -1, errno is set by mkstemp.
+ */
+int mb_mkstemp(MemBuf*);
+
+
 /* Ends use of MemBuf.
  */
 void mb_free(MemBuf*);

@@ -80,7 +80,7 @@ bool mb_endsWithStr(const MemBuf *mb, const char *str)
 
 void mb_ensureEndsWithSlash(MemBuf *mb)
 {
-    if( mb->dataLen == 0 || mb->data[mb->dataLen] != '/' )
+    if( mb->dataLen == 0 || mb->data[mb->dataLen-1] != '/' )
         mb_appendData(mb, "/", 1);
 }
 
@@ -113,6 +113,11 @@ void mb_setStrEnd(MemBuf *mb, unsigned offset, const char *str)
     mb->dataLen = offset + len;
     mb->data = realloc(mb->data, mb->dataLen);
     memcpy(mb->data + offset, str, len);
+}
+
+int mb_mkstemp(MemBuf *mb)
+{
+    return mkstemp(mb->data);
 }
 
 int mb_readFile(MemBuf *mb, int fd, unsigned bufOffset, unsigned toRead)

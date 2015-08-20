@@ -42,8 +42,11 @@ bool cpart_nameEquals(const ContentPart*, const char *name);
 
 /* Returns value of "filename" parameter from Content-Type header field.
  * Returns NULL when the parameter is not set.
- * When not NULL, the part content is stored in the specified file,
- * in directory provided as destDit at ContentPart object creation.
+ * When not NULL, the part content is stored in a file, in directory
+ * provided as destDir at ContentPart object creation.
+ * If the destDir already contains a file with this name, a random name is
+ * chosen for output file. Otherwise the output is stored in file
+ * with this name.
  */
 const char *cpart_getFileName(const ContentPart*);
 
@@ -61,15 +64,23 @@ const char *cpart_getDataStr(const ContentPart*);
 
 
 /* If the body is stored in file and the whole body was stored in output file
- * successfully, makes the output file permanent (i.e. causes that the file
- * will be not deleted at object destruction) and returns true.
+ * successfully, renames the file to targetName, makes the output file
+ * permanent (i.e. causes that file will be not deleted at object
+ * destruction) and returns true.
+ *
+ * The targetName may be relative or absolute. Relative name is related to
+ * destDir. The targetName may be NULL. In this case the file is stored
+ * with name returned by cpart_getFileName(). If a file with the target name
+ * already exists, the result depends on replaceIfExists parameter value.
+ * If false, the function fails with sysErrNo set to EEXIST.
  *
  * If the body is not stored in any file, the function returns false.
- * If the body had to be stored in file but the file creation failed,
+ * If the body had to be stored in a file but the file creation failed,
  * the function stores in sysErrNo the errno value indicating the failure
  * reason.
  */
-bool cpart_finishUpload(ContentPart*, int *sysErrNo);
+bool cpart_finishUpload(ContentPart*, const char *targetName,
+        bool replaceIfExists, int *sysErrNo);
 
 
 /* Ends use of the object.
