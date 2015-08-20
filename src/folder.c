@@ -100,8 +100,7 @@ Folder *folder_loadDir(const char *dir, int *sysErrNo)
     *sysErrNo = 0;
     if( (d = opendir(dir)) != NULL ) {
         MemBuf *filePathName = mb_newWithStr(dir);
-        if( ! mb_endsWithStr(filePathName, "/") )
-            mb_appendStr(filePathName, "/");
+        mb_ensureEndsWithSlash(filePathName);
         dirNameLen = mb_dataLen(filePathName);
         folder = folder_new();
         while( (dp = readdir(d)) != NULL ) {

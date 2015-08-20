@@ -15,6 +15,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 
 struct FileManager {
@@ -258,30 +259,66 @@ static MemBuf *create_newdir(const char *sysPath, const char *newDir)
     return res;
 }
 
-static MemBuf *delete_file(const char *sysPath, const char *fname)
+static int del_recursive(const char *path, int *sysErrNo)
+{
+    int res = 0, dirNameLen;
+    DIR *d;
+    struct dirent *dp;
+
+    log_debug("del_recursive: removing %s", path);
+    if( unlink(path) != 0 ) {
+        if( errno == EISDIR ) {
+            if( (d = opendir(path)) != NULL ) {
+                MemBuf *filePathName = mb_newWithStr(path);
+                mb_ensureEndsWithSlash(filePathName);
+                dirNameLen = mb_dataLen(filePathName);
+                while( res == 0 && (dp = readdir(d)) != NULL ) {
+                    if( strcmp(dp->d_name, ".") && strcmp(dp->d_name, "..")) {
+                        mb_setStrEnd(filePathName, dirNameLen, dp->d_name);
+                        res = del_recursive(mb_data(filePathName), sysErrNo);
+                    }
+                }
+                closedir(d);
+                mb_free(filePathName);
+                if( res == 0 ) {
+                    res = rmdir(path);
+                    *sysErrNo = errno;
+                }
+            }else{
+                *sysErrNo = errno;
+                res = -1;
+            }
+        }else{
+            *sysErrNo = errno;
+            res = errno == ENOENT ? 0 : -1;
+        }
+    }
+    return res;
+}
+
+static MemBuf *delete_file(const char *sysPath, const char *fname,
+        bool recursively)
 {
     char *path;
-    struct stat st;
     MemBuf *res = NULL;
-    int opRes;
+    int opRes, sysErrNo;
 
     if( fname == NULL || fname[0] == '\0' ) {
         res = fmtError(0, "unable to remove file with empty name", NULL);
     }else{
         path = format_path(sysPath, fname);
-        log_debug("delete: %s", path);
-        if( stat(path, &st) == 0 ) {
-            if( S_ISDIR(st.st_mode) ) {
-                opRes = rmdir(path);
-            }else{
-                opRes = unlink(path);
-            }
-            if( opRes != 0 ) {
-                res = fmtError(errno, "delete ", fname, " failed", NULL);
-            }
+        if( recursively ) {
+            log_debug("delete recursively: %s", path);
+            opRes = del_recursive(path, &sysErrNo);
         }else{
-            res = fmtError(errno, fname, NULL);
+            log_debug("delete: %s", path);
+            if( (opRes = unlink(path)) != 0 && errno == EISDIR ) {
+                opRes = rmdir(path);
+                sysErrNo = errno;
+            }
         }
+        if( opRes != 0 )
+            res = fmtError(sysErrNo, "delete ", fname, " failed", NULL);
         free(path);
     }
     return res;
@@ -355,7 +392,9 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
                         cpart_getDataStr(newdir_part));
             }else if(mpdata_containsPartWithName(filemgr->body, "do_delete")) {
                 opErr = delete_file(filemgr->sysPath,
-                        cpart_getDataStr(file_part));
+                        cpart_getDataStr(file_part),
+                        mpdata_getPartByName(filemgr->body,
+                            "del_recursive") != NULL);
             }else if(mpdata_containsPartWithName(filemgr->body, "do_perm")) {
                 opErr = chmod_file(filemgr->sysPath,
                         cpart_getDataStr(file_part),
