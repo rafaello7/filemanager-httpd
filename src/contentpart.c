@@ -123,7 +123,7 @@ const char *cpart_getFilePathName(const ContentPart *cpart)
 
 const char *cpart_getDataStr(const ContentPart *cpart)
 {
-    return cpart->body ? mb_data(cpart->body) : NULL;
+    return cpart && cpart->body ? mb_data(cpart->body) : NULL;
 }
 
 bool cpart_finishUpload(ContentPart *cpart, int *sysErrNo)

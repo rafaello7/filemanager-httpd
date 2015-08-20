@@ -256,7 +256,6 @@ Folder *config_getSubSharesForPath(const char *urlPath)
     int pathLen;
     DataChunk dchPath, ent;
     const FolderEntry *fe;
-    bool isFolder;
     struct stat st;
 
     pathLen = strlen(urlPath);
@@ -277,9 +276,12 @@ Folder *config_getSubSharesForPath(const char *urlPath)
                         !dch_equalsStr(&ent, fe->fileName); ++fe)
                     ;
                 if( fe->fileName == NULL ) {
-                    isFolder = dchPath.len || stat(cur->syspath, &st) ||
-                         S_ISDIR(st.st_mode);
-                    folder_addEntryChunk(folder, &ent, isFolder, st.st_size);
+                    if( dchPath.len || stat(cur->syspath, &st) < 0 )
+                        folder_addEntryChunk(folder, &ent, true, 
+                                S_IRWXU|S_IRWXG|S_IRWXO, 0);
+                    else
+                        folder_addEntryChunk(folder, &ent,
+                                S_ISDIR(st.st_mode), st.st_mode, st.st_size);
                 }
             }
         }

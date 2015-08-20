@@ -55,6 +55,7 @@ static const char response_header[] =
     "        th.onclick = function() { showOptions(th); };\n"
     "    }\n"
     "    function confirmDel(th) {\n"
+    "        th = th.parentNode.parentNode.parentNode.parentNode;\n"
     "        while( th != null && th.name != 'file' )\n"
     "            th = th.previousElementSibling;\n"
     "        return th != null && confirm('delete \"' + th.value + '\" ?');\n"
@@ -95,10 +96,20 @@ static const char response_header[] =
     "        padding: 0px 3px;\n"
     "        cursor: default;\n"
     "    }\n"
-    "    table.folder td {\n"
+    "    tbody.folder > tr > td {\n"
     "        border-color: #ded4f2;\n"
     "        border-width: 1px;\n"
     "        border-bottom-style: solid;\n"
+    "    }\n"
+    "    table.fattr {\n"
+    "        border-collapse: collapse;\n"
+    "    }\n"
+    "    table.fattr td {\n"
+    "        background: #e0f0f9;\n"
+    "        padding: 3px 1ex;\n"
+    "    }\n"
+    "    table.fattr input[type='submit'] {\n"
+    "        width: 100%;\n"
     "    }\n"
     "</style>\n";
 
@@ -122,6 +133,35 @@ static const char response_footer[] =
     "value=\"Add\"/></td></tr>\n"
     "</tbody></table></form>\n";
 
+
+static const char *gFilePermDisp[] = {
+    "---", "r--", "-w-", "rw-", "--x", "r-x", "-wx", "rwx"
+};
+enum {
+    PERM_DISP_CNT = sizeof(gFilePermDisp)/sizeof(gFilePermDisp[0]),
+    PERM_GROUP_USER = 0,
+    PERM_GROUP_GROUP,
+    PERM_GROUP_OTHERS,
+    PERM_GROUP_COUNT
+};
+static const struct {
+    const char *name;
+    unsigned mask;
+    unsigned value[PERM_DISP_CNT];
+} gFilePerm[PERM_GROUP_COUNT] = {
+    { "user", S_IRWXU,
+        { 0, S_IRUSR, S_IWUSR, S_IRUSR|S_IWUSR, S_IXUSR,
+            S_IRUSR|S_IXUSR, S_IWUSR|S_IXUSR, S_IRUSR|S_IWUSR|S_IXUSR }
+    },
+    { "group", S_IRWXG,
+        { 0, S_IRGRP, S_IWGRP, S_IRGRP|S_IWGRP, S_IXGRP,
+            S_IRGRP|S_IXGRP, S_IWGRP|S_IXGRP, S_IRGRP|S_IWGRP|S_IXGRP }
+    },
+    { "others", S_IRWXO,
+        { 0, S_IROTH, S_IWOTH, S_IROTH|S_IWOTH, S_IXOTH,
+            S_IROTH|S_IXOTH, S_IWOTH|S_IXOTH, S_IROTH|S_IWOTH|S_IXOTH }
+    }
+};
 
 const char *filemgr_getLoginForm(void)
 {
@@ -247,10 +287,45 @@ static MemBuf *delete_file(const char *sysPath, const char *fname)
     return res;
 }
 
+static MemBuf *chmod_file(const char *sysPath, const char *fname,
+        const char *puser, const char *pgroup, const char *pothers)
+{
+    char *path;
+    const char *perm[PERM_GROUP_COUNT] = { puser, pgroup, pothers };
+    MemBuf *res = NULL;
+    unsigned i, j, mode = 0;
+    bool isValidParam = fname && puser && pgroup && pothers;
+
+    if( isValidParam ) {
+        for( i = 0; i < PERM_GROUP_COUNT && isValidParam; ++i) {
+            for(j = 0; j < PERM_DISP_CNT &&
+                    strcmp(perm[i], gFilePermDisp[j]); ++j)
+                ;
+            if( j < PERM_DISP_CNT )
+                mode |= gFilePerm[i].value[j];
+            else
+                isValidParam = false;
+        }
+        if( isValidParam ) {
+            path = format_path(sysPath, fname);
+            log_debug("change mode to 0%o (%s%s%s) of %s",
+                    mode, puser, pgroup, pothers, path);
+            if( chmod(path, mode) != 0 )
+                res = fmtError(errno, "change permissions of ", fname,
+                        " failed", NULL);
+            free(path);
+        }
+    }
+    if( ! isValidParam )
+        res = fmtError(0, "invalid parameters", NULL);
+    return res;
+}
+
 enum PostingResult filemgr_processPost(FileManager *filemgr,
         const RequestHeader *rhdr)
 {
     ContentPart *file_part, *newdir_part, *newname_part;
+    ContentPart *puser_part, *pgroup_part, *pothers_part;
     MemBuf *opErr = NULL;
     bool requireAuth = false;
 
@@ -265,6 +340,9 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
             file_part = mpdata_getPartByName(filemgr->body, "file");
             newdir_part = mpdata_getPartByName(filemgr->body, "new_dir");
             newname_part = mpdata_getPartByName(filemgr->body, "new_name");
+            puser_part = mpdata_getPartByName(filemgr->body, "puser");
+            pgroup_part = mpdata_getPartByName(filemgr->body, "pgroup");
+            pothers_part = mpdata_getPartByName(filemgr->body, "pothers");
             if( mpdata_containsPartWithName(filemgr->body, "do_upload") ) {
                 opErr = upload_file(file_part);
             }else if(mpdata_containsPartWithName(filemgr->body, "do_rename")) {
@@ -278,6 +356,12 @@ enum PostingResult filemgr_processPost(FileManager *filemgr,
             }else if(mpdata_containsPartWithName(filemgr->body, "do_delete")) {
                 opErr = delete_file(filemgr->sysPath,
                         cpart_getDataStr(file_part));
+            }else if(mpdata_containsPartWithName(filemgr->body, "do_perm")) {
+                opErr = chmod_file(filemgr->sysPath,
+                        cpart_getDataStr(file_part),
+                        cpart_getDataStr(puser_part),
+                        cpart_getDataStr(pgroup_part),
+                        cpart_getDataStr(pothers_part));
             }
         }
     }else
@@ -305,7 +389,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     const FolderEntry *cur_ent, *optent;
     DataChunk dchUrlPath, dchDirName;
     RespBuf *resp;
-    unsigned pathElemBeg, pathElemEnd;
+    unsigned pathElemBeg, pathElemEnd, i, j;
 
     resp = resp_new(resp_cmnStatus(HTTP_200_OK), onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
@@ -357,7 +441,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendStrEscapeHtml(resp, opErrorMsg);
         resp_appendStr(resp, "</div>\n");
     }
-    resp_appendStr(resp, "<table class='folder'><tbody>\n");
+    resp_appendStr(resp, "<table><tbody class='folder'>\n");
     /* link to parent - " .. " */
     if( dchUrlPath.len ) {
         resp_appendStrL(resp, "<tr>\n<td><span class=\"plusgray\">",
@@ -371,7 +455,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     /* entry list */
     for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
         if( cur_ent->fileName[0] == '.' )
-            resp_appendStr(resp, "<tr class='rhidden' style='display: none'>\n");
+            resp_appendStr(resp,"<tr class='rhidden' style='display: none'>\n");
         else
             resp_appendStr(resp, "<tr>\n");
         /* colored square */
@@ -424,12 +508,16 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         /* menu displayed after click red plus */
         if( isModifiable ) {
             resp_appendStr(resp,
-                    "<tr style=\"display: none\"><td></td>\n"
-                    "<td colspan=\"2\">\n<form method=\"POST\" "
-                    "enctype=\"multipart/form-data\">"
+                    "<tr style=\"display: none\">\n"
+                    "<td></td>\n"
+                    "<td colspan=\"2\">\n"
+                    "<form method=\"POST\" enctype=\"multipart/form-data\">\n"
                     "<input type=\"hidden\" name=\"file\" value=\"");
             resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-            resp_appendStr(resp, "\"/>new name:<select name=\"new_dir\">\n");
+            resp_appendStr(resp, "\"/>\n<table class='fattr'><tbody>");
+            /* first row - "new name:" */
+            resp_appendStr(resp, "<tr><td>new name:</td>\n"
+                    "<td><select name='new_dir'>\n");
             pathElemEnd = 0;
             while( pathElemEnd < dchUrlPath.len ) {
                 pathElemBeg = dch_endOfSpan(&dchUrlPath, pathElemEnd, '/');
@@ -453,11 +541,36 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             }
             resp_appendStr(resp, "</select><input name=\"new_name\" value=\"");
             resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-            resp_appendStr(resp, "\"/><input type=\"submit\" "
-                    "name=\"do_rename\" value=\"Rename\"/><br/>\n"
-                    "<input type=\"submit\" name=\"do_delete\" "
-                    "value=\"Delete\" onclick=\"return confirmDel(this)\"/>\n"
-                    "</form>\n</td>\n</tr>\n");
+            resp_appendStr(resp, "\"/></td>"
+                    "<td><input type=\"submit\" "
+                    "name=\"do_rename\" value=\"Rename\"/></td></tr>\n");
+            /* second row - "permissions:" */
+            resp_appendStr(resp, "<tr><td>permissions:</td><td>");
+            for(i = 0; i < PERM_GROUP_COUNT; ++i) {
+                resp_appendStrL(resp, gFilePerm[i].name,
+                        ": <select name='p", gFilePerm[i].name, "'>\n", NULL);
+                for(j = 0; j < PERM_DISP_CNT; ++j) {
+                    resp_appendStrL(resp, "<option", 
+                            (cur_ent->mode & gFilePerm[i].mask) ==
+                            gFilePerm[i].value[j] ? " selected" : "", ">",
+                            gFilePermDisp[j], "</option>\n", NULL);
+                }
+                resp_appendStr(resp, "</select>\n");
+            }
+            resp_appendStr(resp, "</td>\n"
+                    "<td><input type=\"submit\" "
+                    "name='do_perm' value='Change'/></td></tr>\n");
+            /* 3rd row - "delete:" */
+            resp_appendStr(resp, "<tr><td>delete:</td>\n<td>");
+            if( cur_ent->isDir ) {
+                resp_appendStr(resp, "<label>"
+                    "<input type='checkbox' name='del_recursive'/>"
+                    "recursively</label>");
+            }
+            resp_appendStr(resp, "</td>\n"
+                    "<td><input type=\"submit\" name=\"do_delete\" "
+                    "value=\"Delete\" onclick=\"return confirmDel(this)\"/>"
+                    "</td>\n</tr></tbody>\n</table>\n</form>\n</td>\n</tr>\n");
         }
     }
     /* footer */

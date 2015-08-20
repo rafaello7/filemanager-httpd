@@ -27,7 +27,7 @@ Folder *folder_new(void)
 }
 
 void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
-        unsigned long long size)
+        unsigned mode, unsigned long long size)
 {
     FolderEntry *fe;
 
@@ -39,18 +39,19 @@ void folder_addEntryChunk(Folder *folder, const DataChunk *name, bool isDir,
     fe = folder->entries + folder->entryCount;
     fe->fileName = dch_dupToStr(name);
     fe->isDir = isDir;
+    fe->mode = mode & (S_IRWXU | S_IRWXG | S_IRWXO);
     fe->size = size;
     fe[1].fileName = NULL;
     ++folder->entryCount;
 }
 
 void folder_addEntry(Folder *folder, const char *name, bool isDir,
-        unsigned long long size)
+        unsigned mode, unsigned long long size)
 {
     DataChunk dch;
 
     dch_init(&dch, name, strlen(name));
-    folder_addEntryChunk(folder, &dch, isDir, size);
+    folder_addEntryChunk(folder, &dch, isDir, mode, size);
 }
 
 static int folderEntCompare(const void *pvEnt1, const void *pvEnt2)
@@ -109,7 +110,7 @@ Folder *folder_loadDir(const char *dir, int *sysErrNo)
             mb_setStrEnd(filePathName, dirNameLen, dp->d_name);
             if( stat(mb_data(filePathName), &st) == 0 ) {
                 folder_addEntry(folder, dp->d_name, S_ISDIR(st.st_mode),
-                        st.st_size);
+                        st.st_mode, st.st_size);
             }
         }
         folder_sortEntries(folder);

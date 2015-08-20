@@ -6,6 +6,7 @@
 typedef struct {
     const char *fileName;
     bool isDir;
+    unsigned mode;              /* rwx permissions, like st_mode */
     unsigned long long size;
 } FolderEntry;
 
@@ -20,9 +21,9 @@ Folder *folder_new(void);
 /* Adds a new entry to directory listing.
  */
 void folder_addEntry(Folder*, const char *name, bool isDir,
-        unsigned long long size);
+        unsigned mode, unsigned long long size);
 void folder_addEntryChunk(Folder*, const DataChunk *name, bool isDir,
-        unsigned long long size);
+        unsigned mode, unsigned long long size);
 
 
 /* Sorts entries in directory listing. Entries are sorted as follows:
