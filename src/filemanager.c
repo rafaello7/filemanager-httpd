@@ -232,17 +232,8 @@ static MemBuf *add_new_file(ContentPart *partFile)
     int sysErrNo;
 
     if( fname != NULL ) {
-        const char *pathName = cpart_getFilePathName(partFile);
-        if( cpart_finishUpload(partFile, NULL, false, &sysErrNo) ) {
-            log_debug("upload: added file %s", pathName);
-        }else{
-            if( pathName != NULL )
-                log_debug("upload: failed to create %s, errno=%d (%s)",
-                        pathName, sysErrNo, strerror(sysErrNo));
-            else
-                log_debug("upload: no target dir for %s", fname);
+        if( ! cpart_finishUpload(partFile, NULL, false, &sysErrNo) )
             res = fmtError(sysErrNo, "unable to store ", fname, NULL);
-        }
     }else
         res = fmtError(0, "unable to add: no file chosen", NULL);
     return res;
@@ -366,13 +357,8 @@ static MemBuf *replace_file(const char *sysPath, const char *fname,
 
     if( fname != NULL && tmpPath != NULL ) {
         char *filePath = format_path(sysPath, fname);
-        if( cpart_finishUpload(partFile, filePath, true, &sysErrNo) ) {
-            log_debug("replace: replaced file %s", filePath);
-        }else{
-            log_debug("upload: failed to create %s, errno=%d (%s)",
-                        filePath, sysErrNo, strerror(sysErrNo));
+        if( ! cpart_finishUpload(partFile, filePath, true, &sysErrNo) )
             res = fmtError(sysErrNo, "unable to store ", fname, NULL);
-        }
         free(filePath);
     }else
         res = fmtError(0, "unable to replace: no file chosen", NULL);

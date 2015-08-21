@@ -158,20 +158,30 @@ bool cpart_finishUpload(ContentPart *cpart, const char *targetName,
         }
         if( strcmp(mb_data(cpart->filePathName), targetName) ) {
             if( replaceIfExists ) {
-                if( rename(mb_data(cpart->filePathName), targetName) != 0 ) {
+                if( rename(mb_data(cpart->filePathName), targetName) == 0 ) {
+                    log_debug("replaced %s", targetName);
+                }else{
                     res = false;
                     cpart->sysErrNo = errno;
+                    log_debug("failed to replace %s, errno=%d (%s)",
+                            targetName, cpart->sysErrNo,
+                            strerror(cpart->sysErrNo));
                 }
             }else{
-                if( link(mb_data(cpart->filePathName),
-                            mb_data(targetPathName)) == 0 )
+                if( link(mb_data(cpart->filePathName), targetName) == 0 ) {
                     unlink(mb_data(cpart->filePathName));
-                else{
+                    log_debug("added %s (renamed from: %s)",
+                            mb_data(cpart->filePathName), targetName);
+                }else{
                     res = false;
                     cpart->sysErrNo = errno;
+                    log_debug("failed to add %s, errno=%d (%s)",
+                            targetName, cpart->sysErrNo,
+                            strerror(cpart->sysErrNo));
                 }
             }
-        }
+        }else
+            log_debug("added %s", targetName);
         if( res ) {
             close(cpart->fileDesc);
             cpart->fileDesc = -1;
