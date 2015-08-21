@@ -55,7 +55,27 @@ static const char response_header[] =
     "    th.firstElementChild.textContent = \"+\";\n"
     "    th.onclick = function() { showOptions(th); };\n"
     "}\n"
-    "function confirmRepl(th) {\n"
+    "function showHideHidden(th) {\n"
+    "    var rows = document.getElementsByTagName('tr');\n"
+    "    for(var i = 0; i < rows.length; ++i) {\n"
+    "        var row = rows.item(i);\n"
+    "        if( row.getAttribute('class') == 'rhidden' ) {\n"
+    "            row.style.display = th.checked ? 'table-row' : 'none';\n"
+    "        }\n"
+    "    }\n"
+    "}\n"
+    "function checkRename(th) {\n"
+    "    var res = false;\n"
+    "    var fname = th.form.elements.namedItem('new_name').value;\n"
+    "    if( fname === '' ) {\n"
+    "        alert('please specify the file name');\n"
+    "    }else if( fname.indexOf('/') >= 0 ) {\n"
+    "        alert('slash in name disallowed');\n"
+    "    }else\n"
+    "        res = true;\n"
+    "    return res;\n"
+    "}\n"
+    "function confirmUpload(th) {\n"
     "    var fname = th.form.elements.namedItem('file').value;\n"
     "    var repl = th.form.elements.namedItem('new_cont').value;\n"
     "    if( repl == '' ) {\n"
@@ -72,21 +92,16 @@ static const char response_header[] =
     "    recu = recu != null && recu.checked ? ' recursively' : '';\n"
     "    return confirm('delete' + recu + ' \"' + fname + '\" ?');\n"
     "}\n"
-    "function showHideHidden(th) {\n"
-    "    var rows = document.getElementsByTagName('tr');\n"
-    "    for(var i = 0; i < rows.length; ++i) {\n"
-    "        var row = rows.item(i);\n"
-    "        if( row.getAttribute('class') == 'rhidden' ) {\n"
-    "            row.style.display = th.checked ? 'table-row' : 'none';\n"
-    "        }\n"
-    "    }\n"
-    "}\n"
     "function checkCreateDir(th) {\n"
-    "    if( th.form.elements.namedItem('new_dir').value == '' ) {\n"
+    "    var res = false;\n"
+    "    var dname = th.form.elements.namedItem('new_dir').value;\n"
+    "    if( dname === '' ) {\n"
     "        alert('please specify the directory name');\n"
-    "        return false;\n"
-    "    }\n"
-    "    return true;\n"
+    "    }else if( dname.indexOf('/') >= 0 ) {\n"
+    "        alert('slash in name disallowed');\n"
+    "    }else\n"
+    "        res = true;\n"
+    "    return res;\n"
     "}\n"
     "function checkAddFile(th) {\n"
     "    if( th.form.elements.namedItem('file').value == '' ) {\n"
@@ -245,8 +260,11 @@ static MemBuf *rename_file(const char *sysPath, const char *oldName,
     char *oldpath, *newUrlPath, *newSysPath;
     MemBuf *res = NULL;
 
-    if( oldName == NULL || newDir == NULL || newName == NULL ) {
-        res = fmtError(0, "not all parameters provided for rename", NULL);
+    if( oldName == NULL || oldName[0] == '\0' || newDir == NULL || 
+            newDir[0] != '/' || newName == NULL || newName[0] == '\0' ) {
+        res = fmtError(0, "rename: bad parameters", NULL);
+    }else if( strchr(newName, '/') != NULL ) {
+        res = fmtError(0, "rename: slash in name disallowed", NULL);
     }else{
         oldpath = format_path(sysPath, oldName);
         newUrlPath = format_path(newDir, newName);
@@ -268,10 +286,9 @@ static MemBuf *create_newdir(const char *sysPath, const char *newDir)
     MemBuf *res = NULL;
 
     if( newDir == NULL || newDir[0] == '\0' ) {
-        res = fmtError(0, "unable to create directory with empty name", NULL);
+        res = fmtError(0, "create dir: bad parameters", NULL);
     }else if( strchr(newDir, '/') != NULL ) {
-        res = fmtError(0, "directory name cannot contain slashes"
-                "&emsp;&ndash;&emsp;\"/\"", NULL);
+        res = fmtError(0, "create dir: slash in name disallowed", NULL);
     }else{
         path = format_path(sysPath, newDir);
         log_debug("create dir: %s", path);
@@ -329,7 +346,7 @@ static MemBuf *delete_file(const char *sysPath, const char *fname,
     int opRes, sysErrNo;
 
     if( fname == NULL || fname[0] == '\0' ) {
-        res = fmtError(0, "unable to remove file with empty name", NULL);
+        res = fmtError(0, "delete: bad parameters", NULL);
     }else{
         path = format_path(sysPath, fname);
         if( recursively ) {
@@ -629,7 +646,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             resp_appendStrEscapeHtml(resp, cur_ent->fileName);
             resp_appendStr(resp, "\"/></td>"
                     "<td><input type=\"submit\" "
-                    "name=\"do_rename\" value=\"Rename\"/></td></tr>\n");
+                    "name=\"do_rename\" value=\"Rename\" "
+                    "onclick='return checkRename(this)'/></td></tr>\n");
             /* second row - "permissions:" */
             resp_appendStr(resp, "<tr><td>permissions:</td>");
             for(i = 0; i < PERM_GROUP_COUNT; ++i) {
@@ -650,7 +668,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 resp_appendStr(resp, "<tr><td>replace with:</td>\n"
                         "<td colspan='3'><input type='file' name='new_cont'>"
                         "</td><td><input type='submit' name='do_replace' "
-                        "value='Upload' onclick='return confirmRepl(this)'/>"
+                        "value='Upload' onclick='return confirmUpload(this)'/>"
                         "</td></tr>\n");
             }
             /* 4th row - "delete:" */
