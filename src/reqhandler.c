@@ -41,15 +41,9 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
         gethostname(hostname, sizeof(hostname));
-        resp_appendStr(resp, "<html><head><title>");
-        resp_appendStrEscapeHtml(resp, urlPath);
-        resp_appendStr(resp, " on ");
-        resp_appendStrEscapeHtml(resp, hostname);
-        resp_appendStr(resp, "</title></head><body>\n<h3>Moved to <a href=\"");
-        resp_appendStrEscapeHtml(resp, urlPath);
-        resp_appendStr(resp, "/\">");
-        resp_appendStrEscapeHtml(resp, urlPath);
-        resp_appendStr(resp, "/</a></h3>\n</body></html>\n");
+        resp_appendFmt(resp, "<html><head><title>%S on %S</title></head>"
+                "<body>\n<h3>Moved to <a href=\"%S/\">%S/</a></h3>\n</body>"
+                "</html>\n", urlPath, hostname, urlPath, urlPath);
     }
     return resp;
 }
@@ -64,27 +58,19 @@ static RespBuf *printMesgPage(const char *status, const char *mesg,
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
         gethostname(hostname, sizeof(hostname));
-        resp_appendStr(resp, "<html><head><title>");
-        resp_appendStrEscapeHtml(resp, path);
-        resp_appendStr(resp, " on ");
-        resp_appendStrEscapeHtml(resp, hostname);
-        resp_appendStr(resp, "</title></head><body>\n");
-        if( showLoginButton ) {
-            resp_appendStr(resp, "<div style='text-align: right'>");
-            resp_appendStr(resp, filemgr_getLoginForm());
-            resp_appendStr(resp, "</div>\n");
-        }
-        resp_appendStr(resp,
+        resp_appendFmt(resp,
+                "<html><head><title>%S on %S</title></head><body>\n",
+                path, hostname);
+        if( showLoginButton )
+            resp_appendFmt(resp, "<div style='text-align: right'>%R</div>\n",
+                    filemgr_getLoginForm());
+        resp_appendFmt(resp,
             "&nbsp;<div style=\"text-align: center; margin: 150px 0px\">\n"
             "<span style=\"font-size: x-large; border: 1px solid #FFF0B0; "
-            "background-color: #FFFCF0; padding: 50px 100px\">\n");
-        resp_appendStr(resp, status),
-        resp_appendStr(resp, "</span></div>\n");
-        if( mesg != NULL ) {
-            resp_appendStr(resp, "<p>");
-            resp_appendStrEscapeHtml(resp, mesg);
-            resp_appendStr(resp, "/<p>");
-        }
+            "background-color: #FFFCF0; padding: 50px 100px\">\n"
+            "%R</span></div>\n", status);
+        if( mesg != NULL )
+            resp_appendFmt(resp, "<p>%S</p>", mesg);
         resp_appendStr(resp, "</body></html>\n");
     }
     return resp;

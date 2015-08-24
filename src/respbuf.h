@@ -52,17 +52,15 @@ void resp_enqFile(RespBuf*, int fileDescriptor);
 void resp_appendStr(RespBuf*, const char *str);
 
 
-/* Appends list of strings to response body.
- * The list shall be terminated with NULL.
+/* Appends formatted string. The following format specifiers are recognized:
+ *  %C  - a DataChunk pointer
+ *  %D  - two parameters: character array and then their length
+ *  %R  - a "raw" string
+ *  %S  - a string
+ *  %%  - '%' character
+ *  HTML special characters are escaped in all parameters except %R.
  */
-void resp_appendStrL(RespBuf*, const char *str1, const char *str2,  ...);
-
-
-/* Appends data/string with replaced special HTML characters by entities.
- */
-void resp_appendDataEscapeHtml(RespBuf*, const char *data, unsigned len);
-void resp_appendStrEscapeHtml(RespBuf*, const char *str);
-void resp_appendChunkEscapeHtml(RespBuf*, const DataChunk*);
+void resp_appendFmt(RespBuf*, const char *fmt, ...);
 
 
 /* Finishes response preparation. Free the buffer, return data ready to send.

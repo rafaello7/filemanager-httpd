@@ -69,30 +69,7 @@ void resp_appendStr(RespBuf *resp, const char *str)
     mb_appendStr(resp->body, str);
 }
 
-void resp_enqFile(RespBuf *resp, int fileDesc)
-{
-    if( resp->fileDesc != -1 )
-        close(resp->fileDesc);
-    resp->fileDesc = fileDesc;
-}
-
-void resp_appendStrL(RespBuf *resp, const char *str1, 
-        const char *str2, ...)
-{
-    va_list args;
-
-    mb_appendStr(resp->body, str1);
-    if( str2 != NULL ) {
-        va_start(args, str2);
-        while( str2 != NULL ) {
-            mb_appendStr(resp->body, str2);
-            str2 = va_arg(args, const char*);
-        }
-        va_end(args);
-    }
-}
-
-void resp_appendDataEscapeHtml(RespBuf *resp, const char *data, unsigned len)
+static void appendDataEscapeHtml(RespBuf *resp, const char *data, unsigned len)
 {
     const char *repl, *dcur = data;
 
@@ -118,14 +95,57 @@ void resp_appendDataEscapeHtml(RespBuf *resp, const char *data, unsigned len)
         mb_appendData(resp->body, data, dcur-data);
 }
 
-void resp_appendStrEscapeHtml(RespBuf *resp, const char *str)
+void resp_appendFmt(RespBuf *resp, const char *fmt, ...)
 {
-    resp_appendDataEscapeHtml(resp, str, strlen(str));
+    va_list args;
+    const char *fbeg, *fend, *par;
+    const DataChunk *dch;
+    int len;
+    char c;
+
+    va_start(args, fmt);
+    fbeg = fmt;
+    while( (fend = strchr(fbeg, '%')) != NULL ) {
+        if( fend != fbeg )
+            resp_appendData(resp, fbeg, fend-fbeg);
+        c = *++fend;
+        if( c == 'C' || c == 'D' || c == 'S' ) {
+            if( c == 'C' ) {
+                dch = va_arg(args, DataChunk*);
+                par = dch->data;
+                len = dch->len;
+            }else{
+                par = va_arg(args, const char*);
+                if( c == 'D' )
+                    len = va_arg(args, int);
+                else
+                    len = strlen(par);
+            }
+            appendDataEscapeHtml(resp, par, len);
+        }else{
+            if( c == 'R' ) {
+                par = va_arg(args, const char*);
+                len = strlen(par);
+            }else{
+                if( c != fend[-1] )
+                    --fend;
+                par = fend;
+                len = 1;
+            }
+            resp_appendData(resp, par, len);
+        }
+        fbeg = fend + 1;
+    }
+    va_end(args);
+    if( *fbeg )
+        resp_appendStr(resp, fbeg);
 }
 
-void resp_appendChunkEscapeHtml(RespBuf *resp, const DataChunk *dch)
+void resp_enqFile(RespBuf *resp, int fileDesc)
 {
-    resp_appendDataEscapeHtml(resp, dch->data, dch->len);
+    if( resp->fileDesc != -1 )
+        close(resp->fileDesc);
+    resp->fileDesc = fileDesc;
 }
 
 ResponseSender *resp_finish(RespBuf *resp)

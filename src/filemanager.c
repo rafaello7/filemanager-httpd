@@ -6,6 +6,7 @@
 #include "auth.h"
 #include "fmlog.h"
 #include "multipartdata.h"
+#include "htmlcreator.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -166,7 +167,7 @@ static const char response_header[] =
 static const char response_login_button[] =
     "<form style='display: inline' method=\"POST\" "
     "enctype=\"multipart/form-data\">\n"
-    "<input type=\"submit\" name=\"do_login\" value=\"Login\">\n"
+    "<input type=\"submit\" name=\"do_login\" value=\"Login\"></input>\n"
     "</form>\n";
 
 static const char response_footer[] =
@@ -184,7 +185,7 @@ static const char response_footer[] =
     "</tr></tbody></table></form>\n";
 
 
-static const char *gFilePermDisp[] = {
+static const char gFilePermDisp[][4] = {
     "---", "r--", "-w-", "rw-", "--x", "r-x", "-wx", "rwx"
 };
 enum {
@@ -502,30 +503,20 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     dch_trimTrailing(&dchUrlPath, '/');
     gethostname(hostname, sizeof(hostname));
     /* head, title */
-    resp_appendStr(resp, "<html><head><title>");
-    if( dchUrlPath.len ) {
-        resp_appendChunkEscapeHtml(resp, &dchUrlPath);
-        resp_appendStr(resp, " on ");
-    }
-    resp_appendStrEscapeHtml(resp, hostname);
-    resp_appendStrL(resp, " - File Manager</title>", response_header,
-            "</head>\n<body>\n", NULL);
+    resp_appendFmt(resp, "<html><head><title>%C%R%S - File Manager</title>"
+            "%R</head>\n<body>\n", &dchUrlPath, dchUrlPath.len ? " on " : "",
+            hostname, response_header);
     /* host name as link to root */
-    resp_appendStr(resp, "<table style='width: 100%'><tbody><tr>");
-    resp_appendStr(resp, "<td style=\"font-size: large; font-weight: bold\">"
-            "<a href=\"/\">");
-    resp_appendStrEscapeHtml(resp, hostname);
-    resp_appendStr(resp, "</a>&emsp;");
+    resp_appendFmt(resp, "<table style='width: 100%'><tbody><tr>"
+            "<td style=\"font-size: large; font-weight: bold\">"
+            "<a href=\"/\">%S</a>&emsp;", hostname);
     /* current path as link list */
     pathElemBeg = dch_endOfSpan(&dchUrlPath, 0, '/');
     while( dchUrlPath.len > pathElemBeg ) {
         pathElemEnd = dch_endOfCSpan(&dchUrlPath, pathElemBeg, '/');
-        resp_appendStr(resp, "/<a href=\"");
-        resp_appendDataEscapeHtml(resp, dchUrlPath.data, pathElemEnd);
-        resp_appendStr(resp, "/\">");
-        resp_appendDataEscapeHtml(resp, dchUrlPath.data + pathElemBeg,
+        resp_appendFmt(resp, "/<a href=\"%D/\">%D</a>",
+                dchUrlPath.data, pathElemEnd, dchUrlPath.data + pathElemBeg,
                 pathElemEnd - pathElemBeg);
-        resp_appendStr(resp, "</a>");
         pathElemBeg = dch_endOfSpan(&dchUrlPath, pathElemEnd, '/');
     }
     resp_appendStr(resp, "</td><td style='text-align: right'>");
@@ -534,26 +525,26 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 "onclick='showHideHidden(this)'></input>show hidden files"
                 "</label>");
     if( showLoginButton )
-        resp_appendStrL(resp, "&emsp;", response_login_button, NULL);
+        resp_appendFmt(resp, "&emsp;%R", response_login_button);
     resp_appendStr(resp, "</td></tr></tbody></table>\n");
     /* error bar */
     if( opErrorMsg != NULL ) {
-        resp_appendStr(resp,
+        resp_appendFmt(resp,
                 "<div style=\"font-size: large; text-align: center; "
-                "background-color: gold; padding: 2px; margin-top: 4px\">");
-        resp_appendStrEscapeHtml(resp, opErrorMsg);
-        resp_appendStr(resp, "</div>\n");
+                "background-color: gold; padding: 2px; margin-top: 4px\">"
+                "%S</div>\n", opErrorMsg);
     }
     resp_appendStr(resp, "<table><tbody class='folder'>\n");
     /* link to parent - " .. " */
     if( dchUrlPath.len ) {
-        resp_appendStrL(resp, "<tr>\n<td><span class=\"plusgray\">",
-                isModifiable ? "+" : "&sdot;", "</span></td>\n"
-                 "<td><a style=\"white-space: pre\" href=\"", NULL);
         dch_dirNameOf(&dchUrlPath, &dchDirName);
-        if( ! dch_equalsStr(&dchDirName, "/") )
-            resp_appendChunkEscapeHtml(resp, &dchDirName);
-        resp_appendStr(resp, "/\"> .. </a></td>\n<td></td>\n</tr>\n");
+        resp_appendFmt(resp, "<tr>\n"
+                "<td><span class=\"plusgray\">%R</span></td>\n"
+                "<td><a style=\"white-space: pre\" href=\"%D/\"> .. </a></td>\n"
+                "<td></td>\n"
+                "</tr>\n",
+                isModifiable ? "+" : "&sdot;", dchDirName.data,
+                dch_equalsStr(&dchDirName, "/") ? 0 : dchDirName.len);
     }
     /* entry list */
     for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
@@ -563,24 +554,18 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
             resp_appendStr(resp, "<tr>\n");
         /* colored square */
         if( isModifiable ) {
-            resp_appendStrL(resp, "<td onclick=\"showOptions(this)\">"
-                    "<span class=\"", cur_ent->isDir ? "plusdir" : "plusfile",
-                    "\">+</span></td>\n", NULL);
+            resp_appendFmt(resp, "<td onclick=\"showOptions(this)\">"
+                    "<span class=\"%R\">+</span></td>\n",
+                    cur_ent->isDir ? "plusdir" : "plusfile");
         }else{
-            resp_appendStrL(resp, "<td><span class=\"",
-                    cur_ent->isDir ? "plusdir" : "plusfile",
-                    "\">&sdot;</span></td>\n", NULL);
+            resp_appendFmt(resp,
+                    "<td><span class=\"%R\">&sdot;</span></td>\n",
+                    cur_ent->isDir ? "plusdir" : "plusfile");
         }
         /* entry name as link */
-        resp_appendStr(resp, "<td><a href=\"");
-        resp_appendChunkEscapeHtml(resp, &dchUrlPath);
-        resp_appendStr(resp, "/");
-        resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-        if( cur_ent->isDir )
-            resp_appendStr(resp, "/");
-        resp_appendStr(resp, "\">");
-        resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-        resp_appendStr(resp, "</a></td>\n");
+        resp_appendFmt(resp, "<td><a href=\"%C/%S%R\">%S</a></td>\n",
+                &dchUrlPath, cur_ent->fileName, cur_ent->isDir ? "/" :"",
+                cur_ent->fileName);
         /* optional entry size */
         if( cur_ent->isDir )
             resp_appendStr(resp, "<td></td>\n");
@@ -602,62 +587,54 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 len -= cpy;
                 memcpy(buf+dest, buf+len, cpy);
             }
-            resp_appendStrL(resp, "<td style=\"text-align: right; "
-                    "padding-left: 2em; white-space: nowrap\">",
-                    buf + dest, "kB</td>\n", NULL);
+            resp_appendFmt(resp, "<td style=\"text-align: right; "
+                    "padding-left: 2em; white-space: nowrap\">%RkB</td>\n",
+                    buf + dest);
         }
         resp_appendStr(resp, "</tr>\n");
 
         /* menu displayed after click red plus */
         if( isModifiable ) {
-            resp_appendStr(resp,
+            resp_appendFmt(resp,
                     "<tr style=\"display: none\">\n"
                     "<td></td>\n"
                     "<td colspan=\"2\">\n"
                     "<form method=\"POST\" enctype=\"multipart/form-data\">\n"
-                    "<input type=\"hidden\" name=\"file\" value=\"");
-            resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-            resp_appendStr(resp, "\"/>\n<table class='fattr'><tbody>");
+                    "<input type=\"hidden\" name=\"file\" value=\"%S\"/>\n"
+                    "<table class='fattr'><tbody>", cur_ent->fileName);
             /* first row - "new name:" */
             resp_appendStr(resp, "<tr><td>new name:</td>\n"
                     "<td colspan='3'><select name='new_dir'>\n");
             pathElemEnd = 0;
             while( pathElemEnd < dchUrlPath.len ) {
                 pathElemBeg = dch_endOfSpan(&dchUrlPath, pathElemEnd, '/');
-                resp_appendStr(resp, "<option>");
-                resp_appendDataEscapeHtml(resp, dchUrlPath.data, pathElemBeg);
-                resp_appendStr(resp, "</option>\n");
+                resp_appendFmt(resp, "<option>%D</option>\n",
+                        dchUrlPath.data, pathElemBeg);
                 pathElemEnd = dch_endOfCSpan(&dchUrlPath, pathElemBeg, '/');
             }
-            resp_appendStr(resp, "<option selected>");
-            resp_appendChunkEscapeHtml(resp, &dchUrlPath);
-            resp_appendStr(resp, "/");
-            resp_appendStr(resp, "</option>\n");
+            resp_appendFmt(resp, "<option selected>%C/</option>\n",
+                    &dchUrlPath);
             for(optent = folder_getEntries(folder); optent->fileName; ++optent){
                 if( optent != cur_ent && optent->isDir ) {
-                    resp_appendStr(resp, "<option>");
-                    resp_appendChunkEscapeHtml(resp, &dchUrlPath);
-                    resp_appendStr(resp, "/");
-                    resp_appendStrEscapeHtml(resp, optent->fileName);
-                    resp_appendStr(resp, "/</option>\n");
+                    resp_appendFmt(resp, "<option>%C/%S/</option>\n",
+                            &dchUrlPath, optent->fileName);
                 }
             }
-            resp_appendStr(resp, "</select> <input name='new_name' value=\"");
-            resp_appendStrEscapeHtml(resp, cur_ent->fileName);
-            resp_appendStr(resp, "\"/></td>"
-                    "<td><input type=\"submit\" "
-                    "name=\"do_rename\" value=\"Rename\" "
-                    "onclick='return checkRename(this)'/></td></tr>\n");
+            resp_appendFmt(resp,
+                    "</select> <input name='new_name' value=\"%S\"/></td>"
+                    "<td><input type=\"submit\" name=\"do_rename\" "
+                    "value=\"Rename\" onclick='return checkRename(this)'/>"
+                    "</td></tr>\n", cur_ent->fileName);
             /* second row - "permissions:" */
             resp_appendStr(resp, "<tr><td>permissions:</td>");
             for(i = 0; i < PERM_GROUP_COUNT; ++i) {
-                resp_appendStrL(resp, "<td>", gFilePerm[i].name,
-                        ": <select name='p", gFilePerm[i].name, "'>\n", NULL);
+                resp_appendFmt(resp, "<td>%R: <select name='p%R'>\n",
+                        gFilePerm[i].name, gFilePerm[i].name);
                 for(j = 0; j < PERM_DISP_CNT; ++j) {
-                    resp_appendStrL(resp, "<option", 
+                    resp_appendFmt(resp, "<option%R>%R</option>\n", 
                             (cur_ent->mode & gFilePerm[i].mask) ==
-                            gFilePerm[i].value[j] ? " selected" : "", ">",
-                            gFilePermDisp[j], "</option>\n", NULL);
+                            gFilePerm[i].value[j] ? " selected" : "",
+                            gFilePermDisp[j]);
                 }
                 resp_appendStr(resp, "</select></td>\n");
             }
@@ -685,8 +662,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         }
     }
     /* footer */
-    resp_appendStrL(resp, "</tbody></table>",
-            isModifiable ? response_footer : "", "</body></html>\n", NULL);
+    resp_appendFmt(resp, "</tbody></table>%R</body></html>\n",
+            isModifiable ? response_footer : "");
     return resp;
 }
 
