@@ -6,14 +6,12 @@
 #include "auth.h"
 #include "fmlog.h"
 #include "multipartdata.h"
-#include "htmlcreator.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <sys/stat.h>
-#include <limits.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -113,55 +111,62 @@ static const char response_header[] =
     "}\n"
     "</script>\n"
     "<style>\n"
-    "    body { background-color: #F2FAFC; }\n"
-    "    span.plusdir {\n"
-    "        font-family: monospace;\n"
-    "        font-weight: bold;\n"
-    "        background-color: #D31D41;\n"
-    "        color: white;\n"
-    "        padding: 0px 3px;\n"
-    "        cursor: default;\n"
-    "    }\n"
-    "    span.plusgray {\n"
-    "        font-family: monospace;\n"
-    "        font-weight: bold;\n"
-    "        background-color: #d8d8d8;\n"
-    "        color: white;\n"
-    "        padding: 0px 3px;\n"
-    "        cursor: default;\n"
-    "    }\n"
-    "    span.plusfile {\n"
-    "        font-family: monospace;\n"
-    "        font-weight: bold;\n"
-    "        background-color: #bbdb1e;\n"
-    "        color: white;\n"
-    "        padding: 0px 3px;\n"
-    "        cursor: default;\n"
-    "    }\n"
-    "    tbody.folder > tr > td {\n"
-    "        border-color: #ded4f2;\n"
-    "        border-width: 1px;\n"
-    "        border-bottom-style: solid;\n"
-    "    }\n"
-    "    table.fattr {\n"
-    "        border-collapse: collapse;\n"
-    "    }\n"
-    "    table.fattr td {\n"
-    "        background: #e0f0f9;\n"
-    "        padding: 3px 6px;\n"
-    "    }\n"
-    "    table.fattr input[type='submit'] {\n"
-    "        width: 100%;\n"
-    "    }\n"
-    "    table.fattr input[name='new_name'] {\n"
-    "        width: 20em;\n"
-    "    }\n"
-    "    table.diracns td {\n"
-    "        padding: 2px 4px;\n"
-    "    }\n"
-    "    table.diracns input {\n"
-    "        width: 100%;\n"
-    "    }\n"
+    "body { background-color: #F2FAFC; }\n"
+    "div.errormsg {\n"
+    "   font-size: large;\n"
+    "   text-align: center;\n"
+    "   background-color: gold;\n"
+    "   padding: 2px;\n"
+    "   margin-top: 4px;\n"
+    "}\n"
+    "span.plusdir {\n"
+    "    font-family: monospace;\n"
+    "    font-weight: bold;\n"
+    "    background-color: #D31D41;\n"
+    "    color: white;\n"
+    "    padding: 0px 3px;\n"
+    "    cursor: default;\n"
+    "}\n"
+    "span.plusgray {\n"
+    "    font-family: monospace;\n"
+    "    font-weight: bold;\n"
+    "    background-color: #d8d8d8;\n"
+    "    color: white;\n"
+    "    padding: 0px 3px;\n"
+    "    cursor: default;\n"
+    "}\n"
+    "span.plusfile {\n"
+    "    font-family: monospace;\n"
+    "    font-weight: bold;\n"
+    "    background-color: #bbdb1e;\n"
+    "    color: white;\n"
+    "    padding: 0px 3px;\n"
+    "    cursor: default;\n"
+    "}\n"
+    "tbody.folder > tr > td {\n"
+    "    border-color: #ded4f2;\n"
+    "    border-width: 1px;\n"
+    "    border-bottom-style: solid;\n"
+    "}\n"
+    "table.fattr {\n"
+    "    border-collapse: collapse;\n"
+    "}\n"
+    "table.fattr td {\n"
+    "    background: #e0f0f9;\n"
+    "    padding: 3px 6px;\n"
+    "}\n"
+    "table.fattr input[type='submit'] {\n"
+    "    width: 100%;\n"
+    "}\n"
+    "table.fattr input[name='new_name'] {\n"
+    "    width: 20em;\n"
+    "}\n"
+    "table.diracns td {\n"
+    "    padding: 2px 4px;\n"
+    "}\n"
+    "table.diracns input {\n"
+    "    width: 100%;\n"
+    "}\n"
     "</style>\n";
 
 static const char response_login_button[] =
@@ -360,7 +365,7 @@ static MemBuf *delete_file(const char *sysPath, const char *fname,
             sysErrNo = errno;
         }
         if( opRes != 0 )
-            res = fmtError(sysErrNo, "delete ", fname, " failed", NULL);
+            res = fmtError(sysErrNo, fname, " delete failed", NULL);
         free(path);
     }
     return res;
@@ -489,7 +494,6 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         bool isModifiable, bool showLoginButton, const char *opErrorMsg,
         bool onlyHead)
 {
-    char hostname[HOST_NAME_MAX];
     const FolderEntry *cur_ent, *optent;
     DataChunk dchUrlPath, dchDirName;
     RespBuf *resp;
@@ -501,15 +505,14 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         return resp;
     dch_initWithStr(&dchUrlPath, urlPath);
     dch_trimTrailing(&dchUrlPath, '/');
-    gethostname(hostname, sizeof(hostname));
     /* head, title */
-    resp_appendFmt(resp, "<html><head><title>%C%R%S - File Manager</title>"
+    resp_appendFmt(resp, "<html><head><title>%C%R%H - File Manager</title>"
             "%R</head>\n<body>\n", &dchUrlPath, dchUrlPath.len ? " on " : "",
-            hostname, response_header);
+            response_header);
     /* host name as link to root */
     resp_appendFmt(resp, "<table style='width: 100%'><tbody><tr>"
             "<td style=\"font-size: large; font-weight: bold\">"
-            "<a href=\"/\">%S</a>&emsp;", hostname);
+            "<a href=\"/\">%H</a>&emsp;");
     /* current path as link list */
     pathElemBeg = dch_endOfSpan(&dchUrlPath, 0, '/');
     while( dchUrlPath.len > pathElemBeg ) {
@@ -528,12 +531,8 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         resp_appendFmt(resp, "&emsp;%R", response_login_button);
     resp_appendStr(resp, "</td></tr></tbody></table>\n");
     /* error bar */
-    if( opErrorMsg != NULL ) {
-        resp_appendFmt(resp,
-                "<div style=\"font-size: large; text-align: center; "
-                "background-color: gold; padding: 2px; margin-top: 4px\">"
-                "%S</div>\n", opErrorMsg);
-    }
+    if( opErrorMsg != NULL )
+        resp_appendFmt(resp, "<div class='errormsg'>%S</div>\n", opErrorMsg);
     resp_appendStr(resp, "<table><tbody class='folder'>\n");
     /* link to parent - " .. " */
     if( dchUrlPath.len ) {

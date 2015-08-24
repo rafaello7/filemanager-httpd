@@ -27,7 +27,7 @@ struct RequestHandler {
 
 static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
 {
-    char hostname[HOST_NAME_MAX], *newPath;
+    char *newPath;
     int len;
     RespBuf *resp;
 
@@ -40,10 +40,9 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     free(newPath);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
-        gethostname(hostname, sizeof(hostname));
-        resp_appendFmt(resp, "<html><head><title>%S on %S</title></head>"
+        resp_appendFmt(resp, "<html><head><title>%S on %H</title></head>"
                 "<body>\n<h3>Moved to <a href=\"%S/\">%S/</a></h3>\n</body>"
-                "</html>\n", urlPath, hostname, urlPath, urlPath);
+                "</html>\n", urlPath, urlPath, urlPath);
     }
     return resp;
 }
@@ -51,16 +50,13 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
 static RespBuf *printMesgPage(const char *status, const char *mesg,
         const char *path, bool onlyHead, bool showLoginButton)
 {
-    char hostname[HOST_NAME_MAX];
     RespBuf *resp;
 
     resp = resp_new(status, onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
-        gethostname(hostname, sizeof(hostname));
         resp_appendFmt(resp,
-                "<html><head><title>%S on %S</title></head><body>\n",
-                path, hostname);
+                "<html><head><title>%S on %H</title></head><body>\n", path);
         if( showLoginButton )
             resp_appendFmt(resp, "<div style='text-align: right'>%R</div>\n",
                     filemgr_getLoginForm());

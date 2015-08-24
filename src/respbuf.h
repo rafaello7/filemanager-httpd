@@ -55,6 +55,7 @@ void resp_appendStr(RespBuf*, const char *str);
 /* Appends formatted string. The following format specifiers are recognized:
  *  %C  - a DataChunk pointer
  *  %D  - two parameters: character array and then their length
+ *  %H  - no parameter; host name is inserted
  *  %R  - a "raw" string
  *  %S  - a string
  *  %%  - '%' character

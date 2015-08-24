@@ -9,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <limits.h>
 
 struct RespBuf {
     MemBuf *header;
@@ -101,7 +102,7 @@ void resp_appendFmt(RespBuf *resp, const char *fmt, ...)
     const char *fbeg, *fend, *par;
     const DataChunk *dch;
     int len;
-    char c;
+    char c, hostname[HOST_NAME_MAX];
 
     va_start(args, fmt);
     fbeg = fmt;
@@ -109,8 +110,13 @@ void resp_appendFmt(RespBuf *resp, const char *fmt, ...)
         if( fend != fbeg )
             resp_appendData(resp, fbeg, fend-fbeg);
         c = *++fend;
-        if( c == 'C' || c == 'D' || c == 'S' ) {
-            if( c == 'C' ) {
+        if( c == 'C' || c == 'D' || c == 'H' || c == 'S' ) {
+            if( c == 'H' ) {
+                if( gethostname(hostname, sizeof(hostname)) != 0 )
+                    hostname[0] = '\0';
+                par = hostname;
+                len = strlen(par);
+            }else if( c == 'C' ) {
                 dch = va_arg(args, DataChunk*);
                 par = dch->data;
                 len = dch->len;
