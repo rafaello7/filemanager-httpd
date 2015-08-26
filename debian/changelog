@@ -1,3 +1,10 @@
+filemanager-httpd (0.3.2) unstable; urgency=low
+
+  * Fixed memory leaks
+  * Fixed </p> in error page
+
+ -- Rafal <fatwildcat@gmail.com>  Wed, 26 Aug 2015 21:42:57 +0200
+
 filemanager-httpd (0.3.1) unstable; urgency=low
 
   * added possibility to change file permissions
