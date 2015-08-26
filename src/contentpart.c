@@ -207,6 +207,7 @@ void cpart_free(ContentPart *cpart)
         free(cpart->name);
         free(cpart->fileName);
         mb_free(cpart->body);
+        free(cpart);
     }
 }
 

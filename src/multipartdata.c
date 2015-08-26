@@ -147,6 +147,7 @@ void mpdata_free(MultipartData *mpdata)
         free(mpdata->destDir);
         for(i = 0; i < mpdata->partCount; ++i)
             cpart_free(mpdata->parts[i]);
+        free(mpdata->parts);
         free(mpdata);
     }
 }
