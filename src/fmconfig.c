@@ -29,7 +29,7 @@ typedef struct {
 } Share;
 
 static unsigned gListenPort;
-static const char *gSwitchUser = "www-data";
+static const char *gSwitchUser = "http";
 
 /* patterns specified as "index" option in configuration file.
  */

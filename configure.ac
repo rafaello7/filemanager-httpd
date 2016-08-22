@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([filemanager-httpd], [0.3.2], [fatwildcat@gmail.com])
+AC_INIT([filemanager-httpd], [0.3.3], [fatwildcat@gmail.com])
 AC_CONFIG_SRCDIR([src/fmconfig.h])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
@@ -24,5 +24,5 @@ AC_FUNC_REALLOC
 AC_FUNC_STRCOLL
 AC_CHECK_FUNCS([dup2 gethostname memchr memset mkdir rmdir select socket strcasecmp strchr strcspn strdup strerror strncasecmp strrchr strspn strstr strtoul strtoull])
 
-AC_CONFIG_FILES([Makefile src/Makefile conf.d/Makefile debian/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile conf.d/Makefile])
 AC_OUTPUT

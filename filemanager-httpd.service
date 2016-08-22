@@ -1,0 +1,9 @@
+[Unit]
+Description=Tiny http server with file management via web
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/filemanager-httpd
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,0 @@
-# Defaults for filemanager-httpd initscript
-# sourced by /etc/init.d/filemanager-httpd
-
-# Additional options that are passed to the Daemon.
-DAEMON_OPTS=""
