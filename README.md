@@ -10,7 +10,7 @@ moving to parent directory or to a subdirectory. Also new files may
 be uploaded. File management may be available for everyone or
 password protected. It is possible also to turn off the file
 management possibility completely or even disable whole listing
-feature. Please see [default.conf](conf.d/defaullt.conf) file in
+feature. Please see [default.conf](conf.d/default.conf) file in
 [conf.d](conf.d) directory for all possible options.
 
 The mini-server may be considered as a convenient file manager
