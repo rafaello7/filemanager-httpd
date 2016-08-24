@@ -1,3 +1,4 @@
+# Maintainer: Rafal <fatwildcat@gmail.com>
 pkgname=filemanager-httpd
 pkgver=0.3.4
 pkgrel=1
@@ -5,9 +6,9 @@ pkgdesc="Tiny http server with file management via web"
 arch=('x86_64')
 url="https://github.com/rafaello7/filemanager-httpd"
 license=('GPL')
-depends=('gtk3')
+depends=('glibc')
 source=("$pkgname-$pkgver.tar.gz")
-md5sums=('a411f1ab20111f4648b0480dffd7833b')
+md5sums=('SKIP')
 
 build() {
 	cd "$pkgname-$pkgver"

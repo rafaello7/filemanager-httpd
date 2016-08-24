@@ -7,4 +7,4 @@ arch: dist
 	rm -rf archlinux
 	mkdir archlinux
 	cp PKGBUILD filemanager-httpd-*.tar.gz archlinux
-	cd archlinux && updpkgsums && makepkg
+	cd archlinux && makepkg
