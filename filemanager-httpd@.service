@@ -1,0 +1,7 @@
+[Unit]
+Description=Tiny http server with file management via web (inetd mode)
+
+[Service]
+ExecStart=/usr/bin/filemanager-httpd -i
+StandardInput=socket
+StandardOutput=journal

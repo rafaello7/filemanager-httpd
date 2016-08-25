@@ -6,6 +6,7 @@
 
 static const char *gConfigLoc = "/etc/filemanager-httpd.d";
 unsigned gLogLevel;
+bool gIsInetdMode;
 
 static void usage(void)
 {
@@ -26,6 +27,8 @@ static void usage(void)
     "\t-p user:pass   - print the user and password in encoded form,\n"
     "\t                 suitable for \"credentials\" option and exit\n"
     "\n"
+    "\t-i             - inetd mode (socket passed as standard input)\n"
+    "\n"
     );
 }
 
@@ -33,13 +36,16 @@ bool cmdline_parse(int argc, char *argv[])
 {
     int opt;
 
-    while( (opt = getopt(argc, argv, "c:dhp:")) != -1 ) {
+    while( (opt = getopt(argc, argv, "c:dhip:")) != -1 ) {
         switch( opt ) {
         case 'c':
             gConfigLoc = optarg;
             break;
         case 'd':
             ++gLogLevel;
+            break;
+        case 'i':
+            gIsInetdMode = true;
             break;
         case 'p':
             puts(config_getCredentialsEncoded(optarg));
@@ -62,3 +68,9 @@ unsigned cmdline_getLogLevel(void)
 {
     return gLogLevel;
 }
+
+bool cmdline_isInetdMode(void)
+{
+    return gIsInetdMode;
+}
+

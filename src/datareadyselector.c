@@ -46,6 +46,11 @@ void drs_select(DataReadySelector *drs)
     drs->numFds = 0;
 }
 
+void drs_free(DataReadySelector *drs)
+{
+    free(drs);
+}
+
 void drs_setNonBlockingCloExecFlags(int fd)
 {
     int fdFlags;

@@ -9,4 +9,6 @@ const char *cmdline_getConfigLoc(void);
 
 unsigned cmdline_getLogLevel(void);
 
+bool cmdline_isInetdMode(void);
+
 #endif /* CMDLINE_H */

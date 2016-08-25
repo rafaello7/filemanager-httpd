@@ -20,6 +20,9 @@ void drs_setWriteFd(DataReadySelector*, int fd);
 void drs_select(DataReadySelector*);
 
 
+void drs_free(DataReadySelector*);
+
+
 /* Sets O_NONBLOCK and FD_CLOEXEC flags on the file descriptor
  */
 void drs_setNonBlockingCloExecFlags(int fd);

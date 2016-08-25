@@ -1,7 +1,9 @@
 SUBDIRS	= src conf.d
 
 systemddir = $(libdir)/systemd/system
-dist_systemd_DATA = filemanager-httpd.service
+dist_systemd_DATA = filemanager-httpd.service \
+					filemanager-httpd@.service \
+					filemanager-httpd.socket
 
 arch: dist
 	rm -rf archlinux

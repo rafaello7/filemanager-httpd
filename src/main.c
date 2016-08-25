@@ -62,13 +62,32 @@ static void mainloop(void)
 
 }
 
+static void mainloop_inetd(void)
+{
+    ServerConnection *connection = NULL;
+    DataReadySelector *drs;
+
+    if( ! config_switchToTargetUser() )
+        exit(1);
+    drs_setNonBlockingCloExecFlags(0);
+    drs = drs_new();
+    connection = conn_new(0);
+    while( ! conn_processDataReady(connection, drs) )
+        drs_select(drs);
+    conn_free(connection);
+    drs_free(drs);
+}
+
 int main(int argc, char *argv[])
 {
     if( cmdline_parse(argc, argv) ) {
         signal(SIGPIPE, SIG_IGN);
         signal(SIGCHLD, SIG_IGN);
         config_parse();
-        mainloop();
+        if( cmdline_isInetdMode() )
+            mainloop_inetd();
+        else
+            mainloop();
     }
     return 0;
 }
