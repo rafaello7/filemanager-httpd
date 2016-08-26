@@ -27,6 +27,18 @@ void log_error(const char *msg, ...)
     fprintf(stderr, "\n");
 }
 
+void log_warn(const char *msg, ...)
+{
+    va_list args;
+
+    fflush(stdout);
+    fprintf(stderr, "WARN: ");
+    va_start(args, msg);
+    vfprintf(stderr, msg, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+}
+
 void log_fatal(const char *msg, ...)
 {
     int err = errno;

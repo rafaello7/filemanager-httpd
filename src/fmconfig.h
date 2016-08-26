@@ -87,4 +87,9 @@ bool config_isActionAllowed(enum PrivilegedAction, bool isLoggedIn);
  */
 bool config_givesLoginMorePrivileges(void);
 
+
+/* Returns maximum number of open client connections.
+ */
+unsigned config_getMaxClients(void);
+
 #endif /* FMCONFIG_H */

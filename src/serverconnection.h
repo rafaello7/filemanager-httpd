@@ -6,6 +6,11 @@
 #include "requestheader.h"
 #include "datareadyselector.h"
 
+enum ConnProcessingResult {
+    CONN_IDLE,
+    CONN_BUSY,
+    CONN_TO_CLOSE
+};
 
 /* HTTP server connection
  */
@@ -18,10 +23,14 @@ ServerConnection *conn_new(int socketFd);
 
 
 /* Advances request processing progress.
- * If the request processing is finished, returns true. If not,
- * sets appropriate file descriptors on selector and returns false.
+ * If the connection should be closed, returns CONN_TO_CLOSE. If not,
+ * sets appropriate file descriptors on selector and returns either
+ * CONN_IDLE or CONN_BUSY.
+ * The closeIfIdle parameter causes to return CONN_TO_CLOSE when the connection
+ * is in idle state and no data was read.
  */
-bool conn_processDataReady(ServerConnection*, DataReadySelector*);
+enum ConnProcessingResult conn_processDataReady(ServerConnection*,
+        DataReadySelector*, bool closeIfIdle);
 
 
 /* Ends use of the connection.

@@ -225,10 +225,12 @@ void reqhdr_free(RequestHeader *req)
 {
     int i;
 
-    free(req->request);
-    for(i = 0; i <= req->headerCount; ++i)
-        free(req->headers[i]);
-    free(req->headers);
-    free(req);
+    if( req != NULL ) {
+        free(req->request);
+        for(i = 0; i <= req->headerCount; ++i)
+            free(req->headers[i]);
+        free(req->headers);
+        free(req);
+    }
 }
 

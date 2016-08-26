@@ -12,6 +12,7 @@
 
 
 enum RequestReadState {
+    RRS_IDLE,
     RRS_READ_HEAD,
     RRS_READ_BODY,
     RRS_READ_TRAILER,
@@ -39,6 +40,8 @@ ServerConnection *conn_new(int socketFd)
     conn->socketFd = socketFd;
     conn->readOffset = 0;
     conn->readSize = 0;
+    /* allow to process at least one request - await the first request header
+     */
     conn->rrs = RRS_READ_HEAD;
     conn->header = reqhdr_new();
     conn->chunkHdr = NULL;
@@ -127,6 +130,10 @@ static void appendData(ServerConnection *conn, DataProcessingResult *dpr)
 {
     enum RequestReadState rrsSav = conn->rrs;
 
+    if( conn->rrs == RRS_IDLE ) {
+        conn->header = reqhdr_new();
+        conn->rrs = RRS_READ_HEAD;
+    }
     if( conn->rrs == RRS_READ_HEAD ) {
         int offset = reqhdr_appendData(conn->header,
                 conn->readBuffer + conn->readOffset,
@@ -172,11 +179,13 @@ static void appendData(ServerConnection *conn, DataProcessingResult *dpr)
         reqhdlr_requestReadCompleted(conn->handler, conn->header);
 }
 
-bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
+enum ConnProcessingResult conn_processDataReady(ServerConnection *conn,
+        DataReadySelector *drs, bool closeIfIdle)
 {
     int rd;
     const char *hdrVal;
     DataProcessingResult dpr;
+    bool isVeryIdle = conn->rrs == RRS_IDLE;
 
     dpr_init(&dpr);
     while( true ) {
@@ -188,6 +197,7 @@ bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
                         sizeof(conn->readBuffer))) > 0 )
                 {
                     conn->readSize = rd;
+                    isVeryIdle = false;
                 }else if( rd < 0 ) {
                     if( errno == EWOULDBLOCK ) {
                         dpr_setReqState(&dpr, DPR_AWAIT_READ, conn->socketFd);
@@ -197,6 +207,8 @@ bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
                         dpr_setCloseConn(&dpr);
                     }
                 }else if( rd == 0 ) {/* EOF */
+                    if( conn->rrs != RRS_IDLE )
+                        log_debug("%d premature EOF", conn->socketFd);
                     dpr_setCloseConn(&dpr);
                 }
             }
@@ -212,14 +224,14 @@ bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
         }
         if( conn->rrs != RRS_READ_FINISHED || conn->handler != NULL )
             break;
-        /* request processing has been completed */
+        /* request processing has completed */
         /* sanity check: no await data, socket is ready */
         if( dpr.closeConn || dpr.reqState != DPR_READY ||
                 dpr.respState != DPR_READY )
             log_fatal("INTERNAL ERROR: conn_processDataReady closeConn=%d, "
                     "reqState=%d, respState=%d", dpr.closeConn, dpr.reqState,
                     dpr.respState);
-        /* return if HTTP/1.0 or request has "Connection: close" */
+        /* close HTTP/1.0 connection or when request has "Connection: close" */
         if( ! strcmp(reqhdr_getVersion(conn->header), "1.0") ||
             ((hdrVal = reqhdr_getHeaderVal(conn->header, "Connection"))
                 != NULL && !strcmp(hdrVal, "close")) )
@@ -228,13 +240,18 @@ bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
             break;
         }
         /* re-intialize */
-        conn->rrs = RRS_READ_HEAD;
+        conn->rrs = RRS_IDLE;
         reqhdr_free(conn->header);
-        conn->header = reqhdr_new();
+        conn->header = NULL;
         mb_free(conn->chunkHdr);
         conn->chunkHdr = NULL;
         conn->bodyLen = 0;
         conn->bodyReadLen = 0;
+    }
+    if( ! dpr.closeConn && closeIfIdle && conn->rrs == RRS_IDLE ) {
+        /* closing even when not isVeryIdle -- but a most idle, anyway */
+        log_debug("%d closing as most idle", conn->socketFd);
+        dpr.closeConn = true;
     }
     if( ! dpr.closeConn ) {
         if( dpr.reqState == DPR_AWAIT_READ )
@@ -246,7 +263,7 @@ bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
         else if( dpr.respState == DPR_AWAIT_WRITE )
             drs_setWriteFd(drs, dpr.respAwaitFd);
     }
-    return dpr.closeConn;
+    return dpr.closeConn ? CONN_TO_CLOSE : isVeryIdle ? CONN_IDLE : CONN_BUSY;
 }
 
 void conn_free(ServerConnection *conn)

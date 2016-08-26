@@ -17,11 +17,14 @@
 
 static void mainloop(void)
 {
-    int i, listenfd, acceptfd, connCount = 0;
+    int i, listenfd, acceptfd;
+    unsigned connCount = 0, idleConnCount, busyConnCount, maxConnCount;
     struct sockaddr_in addr;
-    ServerConnection **connections = NULL;
+    ServerConnection **connections, **busyConnections;
     DataReadySelector *drs;
+    bool isConnMaxWarnPrinted = false;
 
+    maxConnCount = config_getMaxClients();
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 )
         log_fatal("socket");
     i = 1;
@@ -31,36 +34,59 @@ static void mainloop(void)
     addr.sin_port = htons(config_getListenPort());
     if( bind(listenfd, (struct sockaddr*)&addr, sizeof(addr)) < 0 )
         log_fatal("bind");
-    if( listen(listenfd, 5) < 0 )
+    if( listen(listenfd, maxConnCount) < 0 )
         log_fatal("listen");
     if( ! config_switchToTargetUser() )
         exit(1);
+    connections = malloc(maxConnCount * sizeof(ServerConnection*));
+    busyConnections = malloc(maxConnCount * sizeof(ServerConnection*));
     drs_setNonBlockingCloExecFlags(listenfd);
     drs = drs_new();
     while( 1 ) {
-        drs_setReadFd(drs, listenfd);
+        if( connCount < maxConnCount )
+            drs_setReadFd(drs, listenfd);
+        else if( ! isConnMaxWarnPrinted ) {
+            log_warn("number of clients reached maximum (%u)", maxConnCount);
+            isConnMaxWarnPrinted = true;
+        }
         drs_select(drs);
-        while( (acceptfd = accept(listenfd, NULL, NULL)) >= 0 ) {
+        while( connCount < maxConnCount &&
+                (acceptfd = accept(listenfd, NULL, NULL)) >= 0 )
+        {
             i = 1;
             setsockopt(acceptfd, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(i));
             drs_setNonBlockingCloExecFlags(acceptfd);
-            connections = realloc(connections,
-                    (connCount+1) * sizeof(ServerConnection*));
-            connections[connCount] = conn_new(acceptfd);
-            ++connCount;
+            connections[connCount++] = conn_new(acceptfd);
         }
-        if( errno != EWOULDBLOCK )
+        if( connCount > maxConnCount && errno != EWOULDBLOCK )
             log_fatal("accept");
+        /* keep connections ordered descending by idle time;
+         * close most idle connection when connection number reached maximum
+         */
         i = 0;
+        idleConnCount = busyConnCount = 0;
         while( i < connCount ) {
-            if( conn_processDataReady(connections[i], drs) ) {
-                conn_free(connections[i]);
-                if( i < connCount - 1 )
-                    connections[i] = connections[connCount-1];
-                --connCount;
-            }else
+            switch( conn_processDataReady(connections[i], drs,
+                    connCount == maxConnCount && i == busyConnCount) )
+            {
+            case CONN_BUSY:
+                busyConnections[busyConnCount++] = connections[i++];
+                break;
+            case CONN_IDLE:
+                if( i != idleConnCount )
+                    connections[idleConnCount] = connections[i];
+                ++idleConnCount;
                 ++i;
+                break;
+            default: /* CONN_TO_CLOSE */
+                conn_free(connections[i]);
+                ++i;
+                break;
+            }
         }
+        for(i = 0; i < busyConnCount; ++i)
+            connections[idleConnCount+i] = busyConnections[i];
+        connCount = idleConnCount + busyConnCount;
     }
 }
 
@@ -74,7 +100,7 @@ static void mainloop_inetd(void)
     drs_setNonBlockingCloExecFlags(0);
     drs = drs_new();
     connection = conn_new(0);
-    while( ! conn_processDataReady(connection, drs) )
+    while( conn_processDataReady(connection, drs, false) != CONN_TO_CLOSE )
         drs_select(drs);
     conn_free(connection);
     drs_free(drs);

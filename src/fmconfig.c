@@ -58,6 +58,11 @@ static enum DirectoryOps gGuestOps = DO_ALL;
 static const char **gCredentials;
 
 
+/* Maximum number of open client connections.
+ */
+static unsigned gMaxClients = 10;
+
+
 void parseFile(const char *configFName, int *shareCount, int *credentialCount)
 {
     FILE *fp;
@@ -131,6 +136,10 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
                             (*credentialCount+1) * sizeof(char*));
                     gCredentials[*credentialCount] = dch_dupToStr(&dchValue);
                     ++*credentialCount;
+                }else if( dch_equalsStr(&dchName, "maxclients") ) {
+                    if( ! dch_toUInt(&dchValue, 0, &gMaxClients) )
+                        fprintf(stderr, "%s:%d warning: unrecognized "
+                                "maxclients value", configFName, lineNo);
                 }else{
                     fprintf(stderr, "%s:%d warning: unrecognized option "
                             "\"%.*s\", ignored\n", configFName, lineNo,
@@ -494,5 +503,10 @@ bool config_givesLoginMorePrivileges(void)
         break;
     }
     return true;
+}
+
+unsigned config_getMaxClients(void)
+{
+    return gMaxClients;
 }
 
