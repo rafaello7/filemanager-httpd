@@ -274,14 +274,14 @@ RequestHandler *reqhdlr_new(const RequestHeader *rhdr, const char *peerAddr)
 }
 
 unsigned reqhdlr_processData(RequestHandler *hdlr, const char *data,
-        unsigned len, DataReadySelector *drs)
+        unsigned len, DataProcessingResult *dpr)
 {
     unsigned processed = len;
 
     if( hdlr->filemgr != NULL ) {
         filemgr_consumeBodyBytes(hdlr->filemgr, data, len);
     }else if( hdlr->cgiexe != NULL ) {
-        processed = cgiexe_processData(hdlr->cgiexe, data, len, drs);
+        processed = cgiexe_processData(hdlr->cgiexe, data, len, dpr);
     }
     return processed;
 }
@@ -306,18 +306,18 @@ void reqhdlr_requestReadCompleted(RequestHandler *hdlr,
     }
 }
 
-bool reqhdlr_progressResponse(RequestHandler *hdlr, int fd,
-        DataReadySelector *drs)
+bool reqhdlr_progressResponse(RequestHandler *hdlr, int socketFd,
+        DataProcessingResult *dpr)
 {
     bool isFinished = false;
 
     if( hdlr->response == NULL && hdlr->cgiexe != NULL ) {
-        RespBuf *resp = cgiexe_getResponse(hdlr->cgiexe, drs);
+        RespBuf *resp = cgiexe_getResponse(hdlr->cgiexe, dpr);
         if( resp != NULL )
             hdlr->response = resp_finish(resp);
     }
     if( hdlr->response != NULL ) {
-        isFinished = rsndr_send(hdlr->response, fd, drs);
+        isFinished = rsndr_send(hdlr->response, socketFd, dpr);
     }
     return isFinished;
 }

@@ -157,7 +157,6 @@ void resp_enqFile(RespBuf *resp, int fileDesc)
 ResponseSender *resp_finish(RespBuf *resp)
 {
     ResponseSender * rsndr;
-    resp_appendHeader(resp, "Connection", "close");
     resp_appendHeader(resp, "Server", "filemanager-httpd");
 
     rsndr = rsndr_new(resp->header, resp->body, resp->fileDesc);

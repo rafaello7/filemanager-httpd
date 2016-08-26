@@ -3,7 +3,7 @@
 
 
 #include "requestheader.h"
-#include "datareadyselector.h"
+#include "dataprocessingresult.h"
 
 
 typedef struct RequestHandler RequestHandler;
@@ -17,7 +17,7 @@ RequestHandler *reqhdlr_new(const RequestHeader*, const char *peerAddr);
 /* Processes the piece of request body.
  */
 unsigned reqhdlr_processData(RequestHandler*, const char *data,
-        unsigned len, DataReadySelector*);
+        unsigned len, DataProcessingResult*);
 
 
 /* Signals the handler that request is completely read.
@@ -25,12 +25,17 @@ unsigned reqhdlr_processData(RequestHandler*, const char *data,
 void reqhdlr_requestReadCompleted(RequestHandler*, const RequestHeader*);
 
 
-/* Writes response data to file (socket) given by fd.
- * Returns true when all data were written, false otherwise. When false,
- * selector value is set appropriately.
+/* Writes response data to file (socket) given by fileDesc.
+ * Returns true when data processing has been completed, false otherwise.
+ * Upon returnm the DataProcessingResult is set appropriately.
+ * More precisely:
+ *  - when await some data from a file descriptor, fills
+ *    DataProcessingResult.respState and respAwaitFd and returns false
+ *  - otherwise returns true; if some error occurred during socket write,
+ *    the DataProcessingResult.closeConn is also set to true
  */
 bool reqhdlr_progressResponse(RequestHandler*, int fileDesc,
-        DataReadySelector*);
+        DataProcessingResult*);
 
 /* Ends use of RequestHandler.
  */

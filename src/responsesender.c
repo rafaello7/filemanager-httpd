@@ -73,7 +73,7 @@ ResponseSender *rsndr_new(MemBuf *header, MemBuf *body, int fileDesc)
     return rsndr;
 }
 
-static void fillBuffer(ResponseSender *rsndr, DataReadySelector *drs)
+static void fillBuffer(ResponseSender *rsndr, DataProcessingResult *dpr)
 {
     int toFill, rd, filledCount;
     char chunkHeader[10];
@@ -90,7 +90,7 @@ static void fillBuffer(ResponseSender *rsndr, DataReadySelector *drs)
             if( filledCount < toFill ) {
                 if( rd < 0 && errno == EWOULDBLOCK ) {
                     if( filledCount == 0 )
-                        drs_setReadFd(drs, rsndr->fileDesc);
+                        dpr_setRespState(dpr, DPR_AWAIT_READ, rsndr->fileDesc);
                 }else{
                     if( rd < 0 )
                         log_error("fillBuffer");
@@ -137,29 +137,31 @@ static void fillBuffer(ResponseSender *rsndr, DataReadySelector *drs)
             rsndr->nbytes = 0;
         }
         if( filledCount == 0 )
-            drs_setReadFd(drs, rsndr->fileDesc);
+            dpr_setRespState(dpr, DPR_AWAIT_READ, rsndr->fileDesc);
         rsndr->dataSize = filledCount;
     }
 }
 
-bool rsndr_send(ResponseSender *rsndr, int fd, DataReadySelector *drs)
+bool rsndr_send(ResponseSender *rsndr, int socketFd, DataProcessingResult *dpr)
 {
     int wr;
 
     if( rsndr->header != NULL ) {
         while( rsndr->dataOffset < mb_dataLen(rsndr->header) &&
-                (wr = write(fd, mb_data(rsndr->header) + rsndr->dataOffset,
+                (wr = write(socketFd,
+                        mb_data(rsndr->header) + rsndr->dataOffset,
                         mb_dataLen(rsndr->header) - rsndr->dataOffset)) >= 0)
         {
             rsndr->dataOffset += wr;
         }
         if( rsndr->dataOffset < mb_dataLen(rsndr->header) ) {
             if( errno == EWOULDBLOCK ) {
-                drs_setWriteFd(drs, fd);
+                dpr_setRespState(dpr, DPR_AWAIT_WRITE, socketFd);
                 return false;
             }else{
                 if( errno != ECONNRESET && errno != EPIPE )
                     log_error("connected socket write failed");
+                dpr_setCloseConn(dpr);
                 return true;
             }
         }else{
@@ -171,7 +173,8 @@ bool rsndr_send(ResponseSender *rsndr, int fd, DataReadySelector *drs)
     if( rsndr->body != NULL ) {
         while( true ) {
             while( rsndr->dataOffset < rsndr->dataSize &&
-                    (wr = write(fd, mb_data(rsndr->body) + rsndr->dataOffset,
+                    (wr = write(socketFd,
+                            mb_data(rsndr->body) + rsndr->dataOffset,
                             rsndr->dataSize - rsndr->dataOffset)) >= 0)
             {
                 rsndr->dataOffset += wr;
@@ -180,15 +183,17 @@ bool rsndr_send(ResponseSender *rsndr, int fd, DataReadySelector *drs)
                 /* ECONNRESET occurs when peer has closed connection
                  * without receiving all data; similar EPIPE */
                 if( errno == EWOULDBLOCK ) {
-                    drs_setWriteFd(drs, fd);
+                    dpr_setRespState(dpr, DPR_AWAIT_WRITE, socketFd);
                     return false;
                 }else{
                     if( errno != ECONNRESET && errno != EPIPE )
                         log_error("connected socket write failed");
+                    dpr_setCloseConn(dpr);
                     return true;
                 }
+                break;
             }else if( rsndr->nbytes != 0 ) {
-                fillBuffer(rsndr, drs);
+                fillBuffer(rsndr, dpr);
                 if( rsndr->dataSize == 0 )
                     return false;
             }else

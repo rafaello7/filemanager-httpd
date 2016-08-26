@@ -2,7 +2,7 @@
 #define RESPONSESENDER_H
 
 #include "membuf.h"
-#include "datareadyselector.h"
+#include "dataprocessingresult.h"
 
 
 typedef struct ResponseSender ResponseSender;
@@ -23,10 +23,14 @@ typedef struct ResponseSender ResponseSender;
 ResponseSender *rsndr_new(MemBuf *header, MemBuf *body, int fileDesc);
 
 
-/* Sends a piece of response. If whole response is sent, returns true.
- * Otherwise sets the selector appropriately and returns false.
+/* Sends a piece of response to the socketFd. Returns true when finished
+ * (possibly prematurely, i.e. some error occurred during write).
+ * When not finished, the DataProcessingResult.respState and respAwaitFd
+ * are set appropriately.
+ * When error occurs during write, the DataProcessingResult.closeConn
+ * is set to true.
  */
-bool rsndr_send(ResponseSender*, int fd, DataReadySelector*);
+bool rsndr_send(ResponseSender*, int socketFd, DataProcessingResult*);
 
 
 /* Ends use of the sender.

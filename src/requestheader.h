@@ -48,6 +48,11 @@ const char *reqhdr_getPath(const RequestHeader*);
 const char *reqhdr_getQuery(const RequestHeader*);
 
 
+/* Returns HTTP version string from request line.
+ */
+const char *reqhdr_getVersion(const RequestHeader*);
+
+
 /* If the idx does exceed the size of header array, returns false.
  * Otherwise stores in nameBuf and valueBuf the header name and value
  * and returns true.

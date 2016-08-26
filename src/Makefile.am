@@ -1,6 +1,7 @@
 bin_PROGRAMS = filemanager-httpd
 
 filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
+							dataprocessingresult.c \
 							datareadyselector.c serverconnection.c \
 							respbuf.c responsesender.c \
 							fmconfig.c contenttype.c \
@@ -10,6 +11,7 @@ filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
 							md5calc.c auth.c fmlog.c \
 							reqhandler.c main.c \
 							\
+							dataprocessingresult.h \
 							fmconfig.h datachunk.h contenttype.h \
 							contentpart.h multipartdata.h \
 							datareadyselector.h filemanager.h \

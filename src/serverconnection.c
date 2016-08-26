@@ -35,6 +35,7 @@ ServerConnection *conn_new(int socketFd)
 {
     ServerConnection *conn = malloc(sizeof(ServerConnection));
 
+    log_debug("================================= %d open", socketFd);
     conn->socketFd = socketFd;
     conn->readOffset = 0;
     conn->readSize = 0;
@@ -71,7 +72,7 @@ static void onFinishedHeader(ServerConnection *conn)
     }
 }
 
-static void appendBodyData(ServerConnection *conn, DataReadySelector *drs)
+static void appendBodyData(ServerConnection *conn, DataProcessingResult *dpr)
 {
     const char *bol, *eol, *const dataEnd = conn->readBuffer + conn->readSize;
     unsigned addLen, processed;
@@ -82,7 +83,7 @@ static void appendBodyData(ServerConnection *conn, DataReadySelector *drs)
             addLen = dataEnd - bol;
             if( conn->bodyReadLen + addLen > conn->bodyLen )
                 addLen = conn->bodyLen - conn->bodyReadLen;
-            processed = reqhdlr_processData(conn->handler, bol, addLen, drs);
+            processed = reqhdlr_processData(conn->handler, bol, addLen, dpr);
             conn->bodyReadLen += processed;
             bol += processed;
             if( processed < addLen )
@@ -122,7 +123,7 @@ static void appendBodyData(ServerConnection *conn, DataReadySelector *drs)
         conn->readOffset = bol - conn->readBuffer;
 }
 
-static void appendData(ServerConnection *conn, DataReadySelector *drs)
+static void appendData(ServerConnection *conn, DataProcessingResult *dpr)
 {
     enum RequestReadState rrsSav = conn->rrs;
 
@@ -131,6 +132,19 @@ static void appendData(ServerConnection *conn, DataReadySelector *drs)
                 conn->readBuffer + conn->readOffset,
                 conn->readSize - conn->readOffset);
         if( offset >= 0 ) {
+            log_debug("%d request: %s %s HTTP/%s", conn->socketFd,
+                    reqhdr_getMethod(conn->header),
+                    reqhdr_getPath(conn->header),
+                    reqhdr_getVersion(conn->header));
+            if( log_isLevel(2) ) {
+                unsigned i = 0;
+                const char *name, *value;
+
+                while( reqhdr_getHeaderAt(conn->header, i, &name, &value) ) {
+                    log_debug("%s: %s", name, value);
+                    ++i;
+                }
+            }
             conn->readOffset += offset;
             if( conn->readOffset == conn->readSize )
                 conn->readOffset = conn->readSize = 0;
@@ -140,7 +154,7 @@ static void appendData(ServerConnection *conn, DataReadySelector *drs)
         }
     }
     if( conn->rrs == RRS_READ_BODY && conn->readSize ) {
-        appendBodyData(conn, drs);
+        appendBodyData(conn, dpr);
     }
     if( conn->rrs == RRS_READ_TRAILER && conn->readSize ) {
         int offset = reqhdr_appendData(conn->header,
@@ -161,39 +175,84 @@ static void appendData(ServerConnection *conn, DataReadySelector *drs)
 bool conn_processDataReady(ServerConnection *conn, DataReadySelector *drs)
 {
     int rd;
-    bool freeConn = false;
+    const char *hdrVal;
+    DataProcessingResult dpr;
 
+    dpr_init(&dpr);
     while( true ) {
-        if( conn->readSize ) {
-            appendData(conn, drs);
-        }
-        if( conn->readSize != 0 )
-            break;
-        if( (rd = read(conn->socketFd, conn->readBuffer,
-                sizeof(conn->readBuffer))) <= 0 )
-        {
-            if( rd < 0 ) {
-                if( errno != EWOULDBLOCK ) {
-                    if( errno != ECONNRESET )
-                        log_error("read");
-                    freeConn = true;
+        while( ! dpr.closeConn && dpr.reqState == DPR_READY
+                && conn->rrs != RRS_READ_FINISHED )
+        { 
+            if( conn->readSize == 0 ) {
+                if( (rd = read(conn->socketFd, conn->readBuffer,
+                        sizeof(conn->readBuffer))) > 0 )
+                {
+                    conn->readSize = rd;
+                }else if( rd < 0 ) {
+                    if( errno == EWOULDBLOCK ) {
+                        dpr_setReqState(&dpr, DPR_AWAIT_READ, conn->socketFd);
+                    }else{
+                        if( errno != ECONNRESET )
+                            log_error("read");
+                        dpr_setCloseConn(&dpr);
+                    }
+                }else if( rd == 0 ) {/* EOF */
+                    dpr_setCloseConn(&dpr);
                 }
-            }else if( rd == 0 ) /* premature EOF */
-                freeConn = true;
+            }
+            if( conn->readSize != 0 )
+                appendData(conn, &dpr);
+        }
+        if( ! dpr.closeConn && conn->handler != NULL ) {
+            if(reqhdlr_progressResponse(conn->handler, conn->socketFd, &dpr)) {
+                /* response send has been finished */
+                reqhdlr_free(conn->handler);
+                conn->handler = NULL;
+            }
+        }
+        if( conn->rrs != RRS_READ_FINISHED || conn->handler != NULL )
+            break;
+        /* request processing has been completed */
+        /* sanity check: no await data, socket is ready */
+        if( dpr.closeConn || dpr.reqState != DPR_READY ||
+                dpr.respState != DPR_READY )
+            log_fatal("INTERNAL ERROR: conn_processDataReady closeConn=%d, "
+                    "reqState=%d, respState=%d", dpr.closeConn, dpr.reqState,
+                    dpr.respState);
+        /* return if HTTP/1.0 or request has "Connection: close" */
+        if( ! strcmp(reqhdr_getVersion(conn->header), "1.0") ||
+            ((hdrVal = reqhdr_getHeaderVal(conn->header, "Connection"))
+                != NULL && !strcmp(hdrVal, "close")) )
+        {
+            dpr_setCloseConn(&dpr);
             break;
         }
-        conn->readSize = rd;
+        /* re-intialize */
+        conn->rrs = RRS_READ_HEAD;
+        reqhdr_free(conn->header);
+        conn->header = reqhdr_new();
+        mb_free(conn->chunkHdr);
+        conn->chunkHdr = NULL;
+        conn->bodyLen = 0;
+        conn->bodyReadLen = 0;
     }
-    if( conn->handler != NULL )
-        freeConn = reqhdlr_progressResponse(conn->handler, conn->socketFd, drs);
-    if( ! freeConn && conn->rrs != RRS_READ_FINISHED && conn->readSize == 0 )
-        drs_setReadFd(drs, conn->socketFd);
-    return freeConn;
+    if( ! dpr.closeConn ) {
+        if( dpr.reqState == DPR_AWAIT_READ )
+            drs_setReadFd(drs, dpr.reqAwaitFd);
+        else if( dpr.reqState == DPR_AWAIT_WRITE )
+            drs_setWriteFd(drs, dpr.reqAwaitFd);
+        if( dpr.respState == DPR_AWAIT_READ )
+            drs_setReadFd(drs, dpr.respAwaitFd);
+        else if( dpr.respState == DPR_AWAIT_WRITE )
+            drs_setWriteFd(drs, dpr.respAwaitFd);
+    }
+    return dpr.closeConn;
 }
 
 void conn_free(ServerConnection *conn)
 {
     if( conn != NULL ) {
+        log_debug("================================ %d close", conn->socketFd);
         close(conn->socketFd);
         reqhdr_free(conn->header);
         mb_free(conn->chunkHdr);

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -40,6 +41,8 @@ static void mainloop(void)
         drs_setReadFd(drs, listenfd);
         drs_select(drs);
         while( (acceptfd = accept(listenfd, NULL, NULL)) >= 0 ) {
+            i = 1;
+            setsockopt(acceptfd, IPPROTO_TCP, TCP_NODELAY, &i, sizeof(i));
             drs_setNonBlockingCloExecFlags(acceptfd);
             connections = realloc(connections,
                     (connCount+1) * sizeof(ServerConnection*));
@@ -59,7 +62,6 @@ static void mainloop(void)
                 ++i;
         }
     }
-
 }
 
 static void mainloop_inetd(void)

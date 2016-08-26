@@ -95,20 +95,18 @@ void cpart_appendData(ContentPart *cpart, const char *data, unsigned len)
     }
     if( offset >= 0 ) {
         if( cpart->fileName != NULL ) {
-            if( cpart->fileDesc != -1 ) {
-                while( offset < len ) {
-                    if( (wr = write(cpart->fileDesc, data + offset,
-                                    len - offset)) < 0 )
-                    {
-                        cpart->sysErrNo = errno;
-                        close(cpart->fileDesc);
-                        cpart->fileDesc = -1;
-                        if( unlink(mb_data(cpart->filePathName)) != 0 )
-                            log_error("remove %s fail",
-                                    mb_data(cpart->filePathName));
-                    }
-                    offset += wr;
+            while( cpart->fileDesc != -1 && offset < len ) {
+                if( (wr = write(cpart->fileDesc, data + offset,
+                                len - offset)) < 0 )
+                {
+                    cpart->sysErrNo = errno;
+                    close(cpart->fileDesc);
+                    cpart->fileDesc = -1;
+                    if( unlink(mb_data(cpart->filePathName)) != 0 )
+                        log_error("remove %s fail",
+                                mb_data(cpart->filePathName));
                 }
+                offset += wr;
             }
         }else{
             mb_appendData(cpart->body, data + offset, len - offset);

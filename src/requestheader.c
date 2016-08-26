@@ -10,7 +10,7 @@
 
 struct RequestHeader {
     char *request;
-    const char *path, *query;
+    const char *path, *query, *version;
     char **headers;
     int headerCount;    /* number of complete headers; the headerCount-th item
                          * is incomplete.
@@ -25,6 +25,7 @@ RequestHeader *reqhdr_new(void)
 
     req->request = strdup("");
     req->path = req->query = NULL;
+    req->version = "";
     req->headers = NULL;
     req->headerCount = -1;
     req->loginState = LS_LOGGED_OUT;
@@ -44,6 +45,11 @@ const char *reqhdr_getPath(const RequestHeader *req)
 const char *reqhdr_getQuery(const RequestHeader *req)
 {
     return req->query;
+}
+
+const char *reqhdr_getVersion(const RequestHeader *req)
+{
+    return req->version;
 }
 
 bool reqhdr_getHeaderAt(const RequestHeader *req, unsigned idx,
@@ -110,15 +116,15 @@ bool reqhdr_isActionAllowed(const RequestHeader *req, enum PrivilegedAction pa)
 
 static void decodeRequestStartLine(RequestHeader *req)
 {
-    char *src, *dest, num[3];
+    char *src, *dest, num[3], csrc;
 
     /* req->request example: "GET /some%20dir/file?query HTTP/1.1" */
     if( (src = strchr(req->request, ' ')) != NULL ) {
         *src++ = '\0';  /* request method terminate with '\0' */
         req->path = dest = src;
         /* decode URL ("%20" etc. entities)*/
-        while( *src && *src != ' ' ) {
-            if( *src == '%' ) {
+        while( (csrc = *src) != '\0' && csrc != ' ' && csrc != '?' ) {
+            if( csrc == '%' ) {
                 ++src;
                 num[0] = *src;
                 if( *src ) {
@@ -128,20 +134,23 @@ static void decodeRequestStartLine(RequestHeader *req)
                 }
                 num[2] = '\0';
                 *((unsigned char*)dest) = strtoul(num, NULL, 16);
-                ++dest;
-            }else if( *src == '?' ) {
-                /* query string (do not decode) */
-                req->query = ++src;
-                src += strcspn(src, " ");
-                *src = '\0';    /* end of query */
             }else{
                 if( dest != src )
-                    *dest = *src;
+                    *dest = csrc;
                 ++src;
-                ++dest;
             }
+            ++dest;
         }
-        *dest = '\0';
+        *dest = '\0';   /* end of path */
+        if( csrc == '?' ) {
+            /* query string (do not decode) */
+            req->query = ++src;
+            src += strcspn(src, " ");
+            csrc = *src;
+            *src = '\0';    /* end of query */
+        }
+        if( csrc == ' ' && !strncmp(src+1, "HTTP/", 5) )
+            req->version = src + 6;
     }else{
         req->path = "/";
     }
@@ -164,7 +173,7 @@ int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
 {
     const char *bol, *eol;
     char **curLoc, *colon;
-    unsigned curLen, addLen, i;
+    unsigned curLen, addLen;
     bool isFinish = false;
 
     bol = data;
@@ -207,14 +216,6 @@ int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
             bol = eol + 1;
         }else{
             bol = data + len;
-        }
-    }
-    if( isFinish ) {
-        log_debug("request: %s %s", req->request, req->path);
-        if( log_isLevel(2) ) {
-            for(i = 0; i < req->headerCount; ++i)
-                log_debug("%s:%s", req->headers[i],
-                        req->headers[i] + strlen(req->headers[i]) + 1);
         }
     }
     return isFinish ? bol - data : -1;

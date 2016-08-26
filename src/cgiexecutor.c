@@ -15,7 +15,7 @@
 
 struct CgiExecutor {
     bool onlyHead;
-    int outFd, inFd;
+    int inFd, outFd;
     DataHeader *cgiHeader;  /* header of data received from CGI */
 };
 
@@ -191,33 +191,33 @@ CgiExecutor *cgiexe_new(const RequestHeader *hdr, const char *exePath,
     default:
         break;
     }
-    cgiexe->outFd = fdToCgi[1];
+    cgiexe->inFd = fdToCgi[1];
     close(fdToCgi[0]);
-    drs_setNonBlockingCloExecFlags(cgiexe->outFd);
-    cgiexe->inFd = fdFromCgi[0];
-    close(fdFromCgi[1]);
     drs_setNonBlockingCloExecFlags(cgiexe->inFd);
+    cgiexe->outFd = fdFromCgi[0];
+    close(fdFromCgi[1]);
+    drs_setNonBlockingCloExecFlags(cgiexe->outFd);
     cgiexe->onlyHead = !strcmp(reqhdr_getMethod(hdr), "HEAD");
     cgiexe->cgiHeader = datahdr_new();
     return cgiexe;
 }
 
 unsigned cgiexe_processData(CgiExecutor *cgiexe, const char *data,
-        unsigned len, DataReadySelector *drs)
+        unsigned len, DataProcessingResult *dpr)
 {
     int wr;
     unsigned wrtot = 0;
 
-    while( cgiexe->outFd >= 0 && wrtot < len ) {
-        if( (wr = write(cgiexe->outFd, data + wrtot, len - wrtot)) < 0 ) {
+    while( cgiexe->inFd >= 0 && wrtot < len ) {
+        if( (wr = write(cgiexe->inFd, data + wrtot, len - wrtot)) < 0 ) {
             if( errno == EWOULDBLOCK ) {
-                drs_setWriteFd(drs, cgiexe->outFd);
+                dpr_setReqState(dpr, DPR_AWAIT_WRITE, cgiexe->inFd);
                 return wrtot;
             }else{
                 if( errno != EPIPE )
                     log_error("CGI write");
-                close(cgiexe->outFd);
-                cgiexe->outFd = -1;
+                close(cgiexe->inFd);
+                cgiexe->inFd = -1;
             }
         }
         wrtot += wr;
@@ -227,18 +227,18 @@ unsigned cgiexe_processData(CgiExecutor *cgiexe, const char *data,
 
 void cgiexe_requestReadCompleted(CgiExecutor *cgiexe)
 {
-    close(cgiexe->outFd);
-    cgiexe->outFd = -1;
+    close(cgiexe->inFd);
+    cgiexe->inFd = -1;
 }
 
-RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
+RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataProcessingResult *dpr)
 {
     RespBuf *resp = NULL;
     char buf[4096];
     int i, offset = -1, rd;
     const char *headerName, *headerVal;
 
-    while( offset < 0 && (rd = read(cgiexe->inFd, buf, sizeof(buf))) > 0 ) {
+    while( offset < 0 && (rd = read(cgiexe->outFd, buf, sizeof(buf))) > 0 ) {
         offset = datahdr_appendData(cgiexe->cgiHeader, buf, rd, "CGI response");
     }
     if( offset >= 0 ) {
@@ -260,11 +260,11 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
             }
         }
         resp_appendData(resp, buf + offset, rd - offset);
-        resp_enqFile(resp, cgiexe->inFd);
-        cgiexe->inFd = -1;
+        resp_enqFile(resp, cgiexe->outFd);
+        cgiexe->outFd = -1;
     }else if( rd == 0 ) { /* incomplete header in CGI response */
-        close(cgiexe->inFd);
-        cgiexe->inFd = -1;
+        close(cgiexe->outFd);
+        cgiexe->outFd = -1;
         resp = resp_new(resp_cmnStatus(HTTP_500), cgiexe->onlyHead);
         resp_appendHeader(resp, "Content-Type", "text/html");
         resp_appendStr(resp, "<html><head>\n"
@@ -275,7 +275,7 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
     }else{
         if( errno != EWOULDBLOCK )
             log_fatal("cgiexe: read");
-        drs_setReadFd(drs, cgiexe->inFd);
+        dpr_setRespState(dpr, DPR_AWAIT_READ, cgiexe->outFd);
         return NULL;
     }
     return resp;
@@ -284,10 +284,10 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataReadySelector *drs)
 void cgiexe_free(CgiExecutor *cgiexe)
 {
     if( cgiexe != NULL ) {
-        if( cgiexe->outFd != -1 )
-            close(cgiexe->outFd);
         if( cgiexe->inFd != -1 )
             close(cgiexe->inFd);
+        if( cgiexe->outFd != -1 )
+            close(cgiexe->outFd);
         datahdr_free(cgiexe->cgiHeader);
         free(cgiexe);
     }
