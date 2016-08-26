@@ -1,6 +1,6 @@
 # Maintainer: Rafal <fatwildcat@gmail.com>
 pkgname=filemanager-httpd
-pkgver=0.3.5
+pkgver=0.4
 pkgrel=1
 pkgdesc="Tiny http server with file management via web"
 arch=('x86_64')

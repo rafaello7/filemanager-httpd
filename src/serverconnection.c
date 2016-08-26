@@ -222,15 +222,14 @@ enum ConnProcessingResult conn_processDataReady(ServerConnection *conn,
                 conn->handler = NULL;
             }
         }
-        if( conn->rrs != RRS_READ_FINISHED || conn->handler != NULL )
+        if( dpr.closeConn || conn->rrs != RRS_READ_FINISHED ||
+                conn->handler != NULL )
             break;
         /* request processing has completed */
-        /* sanity check: no await data, socket is ready */
-        if( dpr.closeConn || dpr.reqState != DPR_READY ||
-                dpr.respState != DPR_READY )
-            log_fatal("INTERNAL ERROR: conn_processDataReady closeConn=%d, "
-                    "reqState=%d, respState=%d", dpr.closeConn, dpr.reqState,
-                    dpr.respState);
+        /* sanity check: no await data */
+        if( dpr.reqState != DPR_READY || dpr.respState != DPR_READY )
+            log_fatal("INTERNAL ERROR: conn_processDataReady "
+                    "reqState=%d, respState=%d", dpr.reqState, dpr.respState);
         /* close HTTP/1.0 connection or when request has "Connection: close" */
         if( ! strcmp(reqhdr_getVersion(conn->header), "1.0") ||
             ((hdrVal = reqhdr_getHeaderVal(conn->header, "Connection"))

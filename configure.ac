@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-AC_INIT([filemanager-httpd], [0.3.5], [fatwildcat@gmail.com])
+AC_INIT([filemanager-httpd], [0.4], [fatwildcat@gmail.com])
 AC_CONFIG_SRCDIR([src/fmconfig.h])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
