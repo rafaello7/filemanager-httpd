@@ -113,13 +113,16 @@ Sample CGI script below prints out the CGI program whole environment:
     cat <<End
     HTTP/1.1 200 Ok
     Content-Type: text/html; charset=utf-8
-    
+
+    <!DOCTYPE html>
     <html>
+    <head>
     <title>Environment</title>
+    </head>
     <body>
     <pre>
     End
-    set
+    set | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g'
     cat <<End
     </pre>
     </body>
