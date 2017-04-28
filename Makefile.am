@@ -1,6 +1,6 @@
-SUBDIRS	= src conf.d
+SUBDIRS	= src conf.d debian
 
-systemddir = $(libdir)/systemd/system
+systemddir = /lib/systemd/system
 dist_systemd_DATA = filemanager-httpd.service \
 					filemanager-httpd@.service \
 					filemanager-httpd.socket
@@ -10,3 +10,10 @@ arch: dist
 	mkdir archlinux
 	cp PKGBUILD filemanager-httpd-*.tar.gz archlinux
 	cd archlinux && makepkg
+
+deb: dist
+	rm -rf dpkg-deb
+	mkdir dpkg-deb
+	cd dpkg-deb && tar xf ../$(distdir).tar.gz
+	cd dpkg-deb/$(distdir) && dpkg-buildpackage -us -uc
+
