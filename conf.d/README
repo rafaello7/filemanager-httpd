@@ -2,3 +2,5 @@ This is filemanager-httpd server configuration files default location.
 Files with ".conf" extension are treated as configuration files.
 Other files and subdirectories are ignored.
 
+Configuration files are processed in alphabetical order.
+

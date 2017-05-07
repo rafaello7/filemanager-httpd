@@ -63,7 +63,8 @@ static const char **gCredentials;
 static unsigned gMaxClients = 10;
 
 
-void parseFile(const char *configFName, int *shareCount, int *credentialCount)
+static void parseFile(const char *configFName, int *shareCount,
+        int *credentialCount)
 {
     FILE *fp;
     char buf[1024];
@@ -87,18 +88,30 @@ void parseFile(const char *configFName, int *shareCount, int *credentialCount)
                     gShares[*shareCount].syspath = dch_dupToStr(&dchValue);
                     ++*shareCount;
                 }else if( dch_equalsStr(&dchName, "index") ) {
+                    int countPre = gIndexPatternCount;
                     while( dch_extractTillWS(&dchValue, &dchPatt) ) {
                         gIndexPatterns = realloc(gIndexPatterns,
                             (gIndexPatternCount+1) * sizeof(const char*));
                         gIndexPatterns[gIndexPatternCount++] =
                             dch_dupToStr(&dchPatt);
                     }
+                    if( gIndexPatternCount == countPre ) {
+                        free(gIndexPatterns);
+                        gIndexPatterns = NULL;
+                        gIndexPatternCount = 0;
+                    }
                 }else if( dch_equalsStr(&dchName, "cgi") ) {
+                    int countPre = gCgiPatternCount;
                     while( dch_extractTillWS(&dchValue, &dchPatt) ) {
                         gCgiPatterns = realloc(gCgiPatterns,
                             (gCgiPatternCount+1) * sizeof(const char*));
                         gCgiPatterns[gCgiPatternCount++] =
                             dch_dupToStr(&dchPatt);
+                    }
+                    if( gCgiPatternCount == countPre ) {
+                        free(gCgiPatterns);
+                        gCgiPatterns = NULL;
+                        gCgiPatternCount = 0;
                     }
                 }else if( dch_equalsStr(&dchName, "port") ) {
                     if( ! dch_toUInt(&dchValue, 0, &gListenPort) )
@@ -328,6 +341,7 @@ char *config_getIndexFile(const char *dir, int *sysErrNo)
                 {
                     mb_newIfNull(&bestIdxFile);
                     mb_setStrEnd(bestIdxFile, 0, mb_data(filePathName));
+                    bestMatchIdx = matchIdx;
                 }
             }
         }
