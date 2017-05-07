@@ -1,3 +1,11 @@
+filemanager-httpd (0.4.2) unstable; urgency=medium
+
+  * fix bug in "index" option
+  * empty value on "cgi" and "index" option clears collected list
+    of patterns
+
+ -- Rafal <fatwildcat@gmail.com>  Sun, 07 May 2017 22:40:29 +0200
+
 filemanager-httpd (0.4.1) unstable; urgency=low
 
   * revert debian
