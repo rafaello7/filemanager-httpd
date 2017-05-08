@@ -19,7 +19,7 @@ include /usr/share/dpkg/default.mk
 
 # main packaging script based on dh7 syntax
 %:
-	dh $@  --with autotools-dev
+	dh $@  --with autotools-dev,systemd
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )
@@ -28,5 +28,8 @@ include /usr/share/dpkg/default.mk
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
 
+override_dh_systemd_enable:
+	dh_systemd_enable filemanager-httpd.service
+	dh_systemd_enable --no-enable filemanager-httpd.socket
 
 

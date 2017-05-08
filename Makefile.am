@@ -1,9 +1,7 @@
 SUBDIRS	= src conf.d debian
 
-systemddir = /lib/systemd/system
-dist_systemd_DATA = filemanager-httpd.service \
-					filemanager-httpd@.service \
-					filemanager-httpd.socket
+dist_html_DATA = welcome.html
+
 
 arch: dist
 	rm -rf archlinux

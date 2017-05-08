@@ -197,7 +197,7 @@ void config_parse(void)
     if( shareCount == 0 ) {
         gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
         gShares[shareCount].urlpath = "";
-        gShares[shareCount].syspath = "/var/www";
+        gShares[shareCount].syspath = HTMLDIR "/welcome.html";
         ++shareCount;
     }
     gShares = realloc(gShares, (shareCount+1) * sizeof(Share));
