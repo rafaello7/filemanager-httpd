@@ -135,6 +135,14 @@ static const char response_header[] =
     "    padding: 0px 3px;\n"
     "    cursor: default;\n"
     "}\n"
+    "span.pluscgi {\n"
+    "    font-family: monospace;\n"
+    "    font-weight: bold;\n"
+    "    background-color: #E3B81F;\n"
+    "    color: white;\n"
+    "    padding: 0px 3px;\n"
+    "    cursor: default;\n"
+    "}\n"
     "span.plusfile {\n"
     "    font-family: monospace;\n"
     "    font-weight: bold;\n"
@@ -497,7 +505,9 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     const FolderEntry *cur_ent, *optent;
     DataChunk dchUrlPath, dchDirName;
     RespBuf *resp;
-    unsigned pathElemBeg, pathElemEnd, i, j;
+    unsigned pathElemBeg, pathElemEnd, i, j, urlPathLen;
+    MemBuf *entUrlPath;
+    bool isCGI;
 
     resp = resp_new(resp_cmnStatus(HTTP_200_OK), onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
@@ -545,8 +555,13 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                 isModifiable ? "+" : "&sdot;", dchDirName.data,
                 dch_equalsStr(&dchDirName, "/") ? 0 : dchDirName.len);
     }
+    entUrlPath = mb_newWithStr(urlPath);
+    mb_ensureEndsWithSlash(entUrlPath);
+    urlPathLen = mb_dataLen(entUrlPath);
     /* entry list */
     for(cur_ent = folder_getEntries(folder); cur_ent->fileName; ++cur_ent) {
+        mb_setStrEnd(entUrlPath, urlPathLen, cur_ent->fileName);
+        isCGI = !cur_ent->isDir && config_isCGI(mb_data(entUrlPath));
         if( cur_ent->fileName[0] == '.' )
             resp_appendStr(resp,"<tr class='rhidden' style='display: none'>\n");
         else
@@ -554,19 +569,20 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
         /* colored square */
         if( isModifiable ) {
             resp_appendFmt(resp, "<td onclick=\"showOptions(this)\">"
-                    "<span class=\"%R\">+</span></td>\n",
-                    cur_ent->isDir ? "plusdir" : "plusfile");
+                    "<span class=\"%R\">+</span></td>\n", cur_ent->isDir ?
+                    "plusdir" : isCGI ? "pluscgi" : "plusfile");
         }else{
             resp_appendFmt(resp,
                     "<td><span class=\"%R\">&sdot;</span></td>\n",
-                    cur_ent->isDir ? "plusdir" : "plusfile");
+                    cur_ent->isDir ?
+                    "plusdir" : isCGI ? "pluscgi" : "plusfile");
         }
         /* entry name as link */
         resp_appendFmt(resp, "<td><a href=\"%C/%S%R\">%S</a></td>\n",
                 &dchUrlPath, cur_ent->fileName, cur_ent->isDir ? "/" :"",
                 cur_ent->fileName);
         /* optional entry size */
-        if( cur_ent->isDir )
+        if( cur_ent->isDir || isCGI )
             resp_appendStr(resp, "<td></td>\n");
         else{
             static const char spc[] = "&thinsp;";
@@ -660,6 +676,7 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
                     "</td>\n</tr></tbody>\n</table>\n</form>\n</td>\n</tr>\n");
         }
     }
+    mb_free(entUrlPath);
     /* footer */
     resp_appendFmt(resp, "</tbody></table>%R</body></html>\n",
             isModifiable ? response_footer : "");

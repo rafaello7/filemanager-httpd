@@ -1,3 +1,9 @@
+filemanager-httpd (0.4.3) unstable; urgency=medium
+
+  * mark CGI files with different color on directory listing
+
+ -- Rafal <fatwildcat@gmail.com>  Mon, 08 May 2017 10:38:41 +0200
+
 filemanager-httpd (0.4.2) unstable; urgency=medium
 
   * fix bug in "index" option
