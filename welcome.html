@@ -6,19 +6,144 @@
   body {
       font-family: sans-serif;
       background-color: #f8f8f8;
+      text-align: justify;
   }
-  h2 {
-    text-align: center;
+  h2, h3, h4 {
     padding: 0.5ex;
     background-color: #404040;
     color: white;
+  }
+  h2 {
+    text-align: center;
+  }
+  cite {
+    background-color: #e0e0e0;
+    padding: 1px 0.5ex;
+    white-space: nowrap;
+  }
+  blockquote {
+    padding: 1ex 1ex;
+    background-color: #e0e0e0;
+    font-family: monospace;
+    font-size: large; 
+  }
+  code {
+    white-space: nowrap;
   }
 </style>
 </head>
 <body>
     <h2>filemanager-httpd</h2>
-    This is <em>filemanager-httpd</em> welcome file. Probably no share
-    is defined in configuration file. Please customize the server
-    configuration. Look at <code>/etc/filemanager-httpd.d/</code> directory.
+    <p style="font-size: larger; font-weight: bold; padding: 1em">
+    This is <em>filemanager-httpd</em> welcome file. It looks like no share
+    is specified in configuration file. Please feel invited to adjust
+    the server configuration. Look at <code>/etc/filemanager-httpd.d/</code>
+    directory.
+    </p>
+    <h3>Configuration</h3>
+    <p>
+    All files in directory <code>/etc/filemanager-httpd.d/</code> with
+    <code>.conf</code> suffix are read by the server. One configuration file,
+    <code>default.conf</code>, is placed in this directory during installation.
+    This file contains well explained all available options. All options in
+    the file are commented out. It is worth to make a copy of this file and
+    modify the copy. If the <code>default.conf</code> file will be modified,
+    the change will be a problem for installer during installation of a new
+    version of the file.
+    </p>
+    <h4>Shares</h4>
+    <p>
+    The only thing really needed to set in the configuration file is adding of
+    at least one <em>share</em>.  The <em>share</em> is a mapping of URL path
+    to path in file system.  For example, look at the share below:
+    <blockquote>
+        / = /home/fred/Public
+    </blockquote>
+    The definition contains URL path followed by equal sign and then
+    corresponding path in file system. Both paths must be absolute, i.e.
+    shall begin with slash. With this definition request for e.g.
+    <code>http://www.example.com/index.html</code> serves file
+    <code>/home/fred/Public/index.html</code>. HTTP request for
+    <code>http://www.example.com/</code> results with
+    <code>/home/fred/Public</code> directory listing. If the running server has
+    permission to modify the directory contents, the page with directory
+    listing will also contain a form to upload a file to server.  This is the
+    server default behavior and if undesired, the upload possibility may
+    be disabled in configuration file. It is also possible to turn off
+    directory listing. By default the server has enabled all capabilities
+    without restrictions. Although the server drops root privileges after
+    startup thus most of the files in file system cannot be altered this
+    way. The server may even have no access to the
+    <code>/home/fred/Public</code> directory and <cite>403 Forbidden</cite>
+    error message may be displayed instead of the directory listing.
+    </p>
+    <p>
+    Among all shares matching request such with longest URL path is taken to
+    look at the file to serve.  If the configuration file contains more than
+    one share with the same URL path, the share defined later is taken.
+    </p>
+    <p>
+    It is not neccessary to provide a share for <code>/</code> (i.e. root).
+    If such share is not defined and directory listing is enabled, request
+    for <code>/</code> will return a pseudo-directory listing with all
+    available shares. Try it out.
+    </p>
+    <h4>Index files</h4>
+    <p>
+    The server has also a possibility to specify <em>index files</em>. The
+    index file is a file served when URL path refers to a directory.  Index
+    files may be specified using <code>index</code> setting. For example:
+    <blockquote>
+        index = index.html index.htm welcome.html
+    </blockquote>
+    If a directory contains one of the index files, it is served.
+    Otherwise the directory listing is generated, provided that
+    directory listing feature is enabled. If not, error <cite>404 Not
+    Found</cite> is returned.
+    </p>
+    <p>
+    The order of files on list specifies the files precedence in case when
+    more than one of the index files exist in directory. The file specified
+    earlier on list has higher priority.
+    </p>
+    <h4>CGI support</h4>
+    <p>
+    The server may also execute CGI scripts. CGI handling is rather
+    straightforward. The <code>cgi</code> setting in configuration file
+    allows to set patterns to distinguish CGI programs from usual files.
+    </p>
+    <p>
+    For example, the definition below treats all files with cgi extension
+    as CGI programs to execute:
+    <blockquote>
+        cgi = *.cgi
+    </blockquote>
+    <p>
+    Sample CGI script below prints out the CGI program whole environment:
+
+    <blockquote style="white-space: pre">#!/bin/sh
+cat &lt;&lt;End
+HTTP/1.1 200 Ok
+Content-Type: text/html; charset=utf-8
+
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;title&gt;Environment&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;pre&gt;
+End
+set | sed -e 's/&amp;/\&amp;amp;/g' -e 's/&lt;/\&amp;lt;/g'
+cat &lt;&lt;End
+&lt;/pre&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+End</blockquote>
+
+    Don't forget to set the script execute permission. Otherwise internal
+    server error will be displayed by server instead of the script output.
+    </p>
+    <br>
 </body>
 </html>
