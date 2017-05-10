@@ -22,4 +22,5 @@ filemanager_httpd_SOURCES = datachunk.c membuf.c folder.c requestheader.c \
 							md5calc.h auth.h fmlog.h \
 							reqhandler.h
 
-filemanager_httpd_CPPFLAGS = -Wall -DHTMLDIR='"$(htmldir)"'
+filemanager_httpd_CPPFLAGS = -Wall -DHTMLDIR='"$(htmldir)"' \
+							 -DSYSCONFDIR='"$(sysconfdir)"'

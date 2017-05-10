@@ -8,7 +8,7 @@
       background-color: #f8f8f8;
       text-align: justify;
   }
-  h2, h3, h4 {
+  h2, h4 {
     padding: 0.5ex;
     background-color: #404040;
     color: white;
@@ -33,14 +33,12 @@
 </style>
 </head>
 <body>
-    <h2>filemanager-httpd</h2>
-    <p style="font-size: larger; font-weight: bold; padding: 1em">
-    This is <em>filemanager-httpd</em> welcome file. It looks like no share
-    is specified in configuration file. Please feel invited to adjust
-    the server configuration. Look at <code>/etc/filemanager-httpd.d/</code>
-    directory.
+    <h2>Welcome to filemanager-httpd</h2>
+    <p>
+    Below is brief information how to configure the
+    <em>filemanager-httpd</em> server.
     </p>
-    <h3>Configuration</h3>
+    <h4>Configuration files</h4>
     <p>
     All files in directory <code>/etc/filemanager-httpd.d/</code> with
     <code>.conf</code> suffix are read by the server. One configuration file,
@@ -50,6 +48,9 @@
     modify the copy. If the <code>default.conf</code> file will be modified,
     the change will be a problem for installer during installation of a new
     version of the file.
+    </p>
+    <p>
+    Changes made in configuration file take effect after server restart.
     </p>
     <h4>Shares</h4>
     <p>
@@ -78,7 +79,7 @@
     error message may be displayed instead of the directory listing.
     </p>
     <p>
-    Among all shares matching request such with longest URL path is taken to
+    Among all shares matching request, such with longest URL path is taken to
     look at the file to serve.  If the configuration file contains more than
     one share with the same URL path, the share defined later is taken.
     </p>
@@ -92,7 +93,7 @@
     <p>
     The server has also a possibility to specify <em>index files</em>. The
     index file is a file served when URL path refers to a directory.  Index
-    files may be specified using <code>index</code> setting. For example:
+    files may be specified using <code>index</code> parameter. For example:
     <blockquote>
         index = index.html index.htm welcome.html
     </blockquote>
@@ -102,14 +103,13 @@
     Found</cite> is returned.
     </p>
     <p>
-    The order of files on list specifies the files precedence in case when
-    more than one of the index files exist in directory. The file specified
-    earlier on list has higher priority.
+    In case when more than one index file exists in directory, the file
+    listed earlier on <em>index</em> parameter is taken.
     </p>
     <h4>CGI support</h4>
     <p>
     The server may also execute CGI scripts. CGI handling is rather
-    straightforward. The <code>cgi</code> setting in configuration file
+    straightforward. The <code>cgi</code> parameter in configuration file
     allows to set patterns to distinguish CGI programs from usual files.
     </p>
     <p>

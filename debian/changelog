@@ -1,3 +1,9 @@
+filemanager-httpd (0.4.4) unstable; urgency=medium
+
+  * Add brief information about configuration in welcome page.
+
+ -- Rafal <fatwildcat@gmail.com>  Wed, 10 May 2017 17:04:07 +0200
+
 filemanager-httpd (0.4.3) unstable; urgency=medium
 
   * mark CGI files with different color on directory listing

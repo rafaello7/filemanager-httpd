@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <stdio.h>
 
-static const char *gConfigLoc = "/etc/filemanager-httpd.d";
+static const char *gConfigLoc = SYSCONFDIR "/filemanager-httpd.d";
 unsigned gLogLevel;
 bool gIsInetdMode;
 
