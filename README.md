@@ -27,10 +27,5 @@ package using dpkg. The server will be started by the installer.
 If your system is not debian-like, you will have to compile the server.
 Take filemanager-httpd.**.tar.gz file. Unpack, run _configure_ script,
 then _make_ and _make install_. Note that installation made this way
-does not have any init scripts.
-
-Configuration
--------------
-
-See [welcome file](welcome.html)
+does not have any init script.
 
