@@ -24,7 +24,7 @@ static void fatalErrorResp(const char *message, const char *status)
     if( status == NULL )
         status = "500 Internal Server Error";
     printf("Content-Type: text/html\nStatus: %s\n\n"
-            "<html><head>\n<title>%s</title>\n</head>\n"
+            "<!DOCTYPE html><html><head>\n<title>%s</title>\n</head>\n"
             "<body><h3>%s</h3>\n%s\n</body></html>",
             status, status, status, message);
     exit(1);
@@ -267,7 +267,7 @@ RespBuf *cgiexe_getResponse(CgiExecutor *cgiexe, DataProcessingResult *dpr)
         cgiexe->outFd = -1;
         resp = resp_new(resp_cmnStatus(HTTP_500), cgiexe->onlyHead);
         resp_appendHeader(resp, "Content-Type", "text/html");
-        resp_appendStr(resp, "<html><head>\n"
+        resp_appendStr(resp, "<!DOCTYPE html><html><head>\n"
                 "<title>Internal Server Error</title>\n</head>\n"
                 "<body><h3>Internal Server Error</h3>\n"
                 "Missing end-of-header line in CGI response\n"

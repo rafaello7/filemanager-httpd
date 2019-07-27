@@ -184,7 +184,7 @@ static const char response_login_button[] =
     "</form>\n";
 
 static const char response_footer[] =
-    "<p><hr></p>\n"
+    "<hr style='margin: 16px 0px'>\n"
     "<form method='POST' enctype='multipart/form-data'>\n"
     "<table class='diracns'><tbody>\n"
     "<tr><td>new directory:</td>\n"
@@ -516,7 +516,9 @@ static RespBuf *printFolderContents(const char *urlPath, const Folder *folder,
     dch_initWithStr(&dchUrlPath, urlPath);
     dch_trimTrailing(&dchUrlPath, '/');
     /* head, title */
-    resp_appendFmt(resp, "<html><head><title>%C%R%H - File Manager</title>"
+    resp_appendFmt(resp,
+            "<!DOCTYPE html>"
+            "<html><head><title>%C%R%H - File Manager</title>"
             "%R</head>\n<body>\n", &dchUrlPath, dchUrlPath.len ? " on " : "",
             response_header);
     /* host name as link to root */

@@ -40,7 +40,8 @@ static RespBuf *printMovedAddSlash(const char *urlPath, bool onlyHead)
     free(newPath);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
-        resp_appendFmt(resp, "<html><head><title>%S on %H</title></head>"
+        resp_appendFmt(resp,
+                "<!DOCTYPE html><html><head><title>%S on %H</title></head>"
                 "<body>\n<h3>Moved to <a href=\"%S/\">%S/</a></h3>\n</body>"
                 "</html>\n", urlPath, urlPath, urlPath);
     }
@@ -55,13 +56,13 @@ static RespBuf *printMesgPage(const char *status, const char *mesg,
     resp = resp_new(status, onlyHead);
     resp_appendHeader(resp, "Content-Type", "text/html; charset=utf-8");
     if( ! onlyHead ) {
-        resp_appendFmt(resp,
+        resp_appendFmt(resp, "<!DOCTYPE html>"
                 "<html><head><title>%S on %H</title></head><body>\n", path);
         if( showLoginButton )
             resp_appendFmt(resp, "<div style='text-align: right'>%R</div>\n",
                     filemgr_getLoginForm());
         resp_appendFmt(resp,
-            "&nbsp;<div style=\"text-align: center; margin: 150px 0px\">\n"
+            "<div style=\"text-align: center; margin: 150px 0px\">\n"
             "<span style=\"font-size: x-large; border: 1px solid #FFF0B0; "
             "background-color: #FFFCF0; padding: 50px 100px\">\n"
             "%R</span></div>\n", status);
