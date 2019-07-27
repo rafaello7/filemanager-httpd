@@ -432,12 +432,15 @@ bool config_getDigestAuthCredential(const char *userName, int userNameLen,
     if( userNameLen == -1 )
         userNameLen = strlen(userName);
     if( gCredentials != NULL ) {
-        for(cred = gCredentials; *cred != NULL && found == NULL; ++cred) {
+        for(cred = gCredentials; *cred != NULL; ++cred) {
             if( ! strncmp(*cred, userName, userNameLen) ) {
                 passwdBeg = *cred + userNameLen;
                 if( *passwdBeg == ':' || (strlen(passwdBeg) == 32 &&
                         strchr(passwdBeg, ':') == NULL) )
+                {
                     found = passwdBeg;
+                    break;
+                }
             }
         }
         if( found != NULL ) {
