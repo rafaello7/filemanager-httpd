@@ -76,7 +76,7 @@ ResponseSender *rsndr_new(MemBuf *header, MemBuf *body, int fileDesc)
 static void fillBuffer(ResponseSender *rsndr, DataProcessingResult *dpr)
 {
     int toFill, rd, filledCount;
-    char chunkHeader[10];
+    char chunkHeader[12];
 
     if( rsndr->nbytes >= 0 ) {
         toFill = rsndr->nbytes < 65536 ? rsndr->nbytes : 65536;
