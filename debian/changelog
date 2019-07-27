@@ -1,3 +1,10 @@
+filemanager-httpd (0.4.5) unstable; urgency=medium
+
+  * Fix segmentation fault occurring during authentication
+  * Fix html error reported by Firefox
+
+ -- Rafal <fatwildcat@gmail.com>  Sat, 27 Jul 2019 17:14:47 +0200
+
 filemanager-httpd (0.4.4) unstable; urgency=medium
 
   * Add brief information about configuration in welcome page.
