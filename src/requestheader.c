@@ -191,7 +191,7 @@ int reqhdr_appendData(RequestHeader *req, const char *data, unsigned len)
             if( curLen > 0 && (*curLoc)[curLen-1] == '\r' )
                 (*curLoc)[--curLen] = '\0';
             if( **curLoc == '\0' ) {    /* empty line */
-                isFinish = true;
+                isFinish = req->headerCount >= 0;
             }else{
                 if( req->headerCount >= 0 ) {
                     /* replace colon with '\0' */
