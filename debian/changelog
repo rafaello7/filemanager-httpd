@@ -1,3 +1,9 @@
+filemanager-httpd (1.0.0) unstable; urgency=medium
+
+  * Fix segmentation fault occurring when empty line is received at connection begin
+
+ -- Rafal <fatwildcat@gmail.com>  Fri, 30 Dec 2022 20:34:13 +0100
+
 filemanager-httpd (0.4.5) unstable; urgency=medium
 
   * Fix segmentation fault occurring during authentication
