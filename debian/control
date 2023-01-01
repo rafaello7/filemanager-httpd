@@ -2,13 +2,15 @@ Source: filemanager-httpd
 Section: web
 Priority: optional
 Maintainer: Rafal <fatwildcat@gmail.com>
-Build-Depends: debhelper (>= 9), autotools-dev, lsb-base (>= 3.2-14)
-Standards-Version: 3.9.6
+Build-Depends: debhelper-compat (= 13), dh-autoreconf
+Standards-Version: 4.5.1
 Homepage: https://github.com/rafaello7/filemanager-httpd
+Rules-Requires-Root: no
 
 Package: filemanager-httpd
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Multi-Arch: foreign
+Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: Tiny http server with file management via web
  Tiny http server with CGI support and with built-in
  possibility to manage files using web browser.
