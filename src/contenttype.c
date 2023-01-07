@@ -56,6 +56,7 @@ const char *cttype_getContentTypeByFileExt(const char *fname)
         { "tiff",    "image/tiff" },
         { "tsv",     "text/tab-separated-values; charset=utf-8" },
         { "txt",     "text/plain; charset=utf-8" },
+        { "wasm",    "application/wasm" },
         { "wav",     "audio/x-wav" },
         { "wma",     "audio/x-ms-wma" },
         { "wmv",     "video/x-ms-wmv" },
