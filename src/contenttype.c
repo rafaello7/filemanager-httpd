@@ -27,6 +27,7 @@ const char *cttype_getContentTypeByFileExt(const char *fname)
         { "jpe",     "image/jpeg" },
         { "jpeg",    "image/jpeg" },
         { "jpg",     "image/jpeg" },
+        { "js",      "text/javascript" },
         { "json",    "application/json" },
         { "m3u",     "audio/x-mpegurl" },
         { "mid",     "audio/midi" },
