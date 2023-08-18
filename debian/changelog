@@ -1,3 +1,10 @@
+filemanager-httpd (1.0.1) unstable; urgency=medium
+
+  * add "text/javascript" content type for ".js" and ".mjs" files
+  * add "application/wasm" content type for ".wasm" files
+
+ -- Rafal <fatwildcat@gmail.com>  Fri, 18 Aug 2023 07:42:44 +0200
+
 filemanager-httpd (1.0.0) unstable; urgency=medium
 
   * Fix segmentation fault occurring when empty line is received
